@@ -97,7 +97,6 @@ class GraphSearchTool(BaseTool):
     ) -> str:
         """Execute the search (async)."""
         results = await self.client.graph.search(
-            project_id,
             query,
             types=types or "episodes,facts",
             limit=limit or 20,
@@ -132,7 +131,7 @@ class GraphNodeDetailTool(BaseTool):
 
     async def _arun(self, project_id: str, node_id: str) -> str:
         """Retrieve node details (async)."""
-        detail = await self.client.graph.node_detail(project_id, node_id)
+        detail = await self.client.graph.node_detail(node_id)
         lines: list[str] = [
             f"Node: {detail.node.name} ({detail.node.type})",
             f"Summary: {detail.node.summary}",
@@ -176,7 +175,6 @@ class ListGraphNodesTool(BaseTool):
     ) -> str:
         """List nodes (async)."""
         paginator = await self.client.graph.nodes(
-            project_id,
             entity_type=entity_type,
             limit=limit or 50,
         )

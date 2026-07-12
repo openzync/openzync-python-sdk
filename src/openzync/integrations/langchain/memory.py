@@ -148,7 +148,6 @@ class OZMemory(BaseMemory):
             use as a system-prompt prefix.
         """
         return await self.client.memory.get_context(
-            self.project_id,
             query=query,
             limit=limit,
         )

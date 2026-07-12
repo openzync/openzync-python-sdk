@@ -89,7 +89,6 @@ class OZGraphRetriever(BaseRetriever):
         """
         limit = kwargs.get("limit", self.k)
         results = await self.client.graph.search(
-            self.project_id,
             query,
             types=kwargs.get("types", self.types),
             limit=limit,

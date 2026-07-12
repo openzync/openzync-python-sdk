@@ -26,7 +26,6 @@ class AsyncGraphClient:
 
     async def nodes(
         self,
-        project_id: str,
         *,
         entity_type: str | None = None,
         limit: int = 50,
@@ -34,13 +33,14 @@ class AsyncGraphClient:
         """List entity nodes with optional type filter.
 
         Args:
-            project_id: The internal UUID of the project.
             entity_type: Optional entity type filter.
             limit: Maximum results per page.
 
         Returns an async iterator that auto-fetches subsequent pages.
         Yields ``GraphNode`` objects.
         """
+        pid = await self._http.resolve_project_id()
+
         async def fetch_page(cursor: str | None = None) -> dict:
             params: dict[str, str | int] = {"limit": limit}
             if entity_type is not None:
@@ -49,7 +49,7 @@ class AsyncGraphClient:
                 params["cursor"] = cursor
             raw = await self._http.request(
                 "GET",
-                f"/v1/projects/{project_id}/graph/nodes",
+                f"/v1/projects/{pid}/graph/nodes",
                 params=params,
             )
             # API wraps items in data.items — flatten for paginator
@@ -65,18 +65,17 @@ class AsyncGraphClient:
 
     async def node_detail(
         self,
-        project_id: str,
         node_id: str,
     ) -> GraphNodeDetail:
         """Get a single entity node with all its incident edges.
 
         Args:
-            project_id: The internal UUID of the project.
             node_id: The UUID of the entity node.
         """
+        pid = await self._http.resolve_project_id()
         data = await self._http.request(
             "GET",
-            f"/v1/projects/{project_id}/graph/nodes/{node_id}",
+            f"/v1/projects/{pid}/graph/nodes/{node_id}",
         )
         inner = data.get("data", data)
         return GraphNodeDetail(
@@ -84,21 +83,20 @@ class AsyncGraphClient:
             edges=[GraphEdge(**e) for e in inner.get("edges", [])],
         )
 
-    async def delete_node(self, project_id: str, node_id: str) -> None:
+    async def delete_node(self, node_id: str) -> None:
         """Delete an entity node from the knowledge graph.
 
         Args:
-            project_id: The internal UUID of the project.
             node_id: The UUID of the entity node.
         """
+        pid = await self._http.resolve_project_id()
         await self._http.request(
             "DELETE",
-            f"/v1/projects/{project_id}/graph/nodes/{node_id}",
+            f"/v1/projects/{pid}/graph/nodes/{node_id}",
         )
 
     async def edges(
         self,
-        project_id: str,
         subject_id: str,
         *,
         predicate: str | None = None,
@@ -107,11 +105,12 @@ class AsyncGraphClient:
         """List relationship edges for a specific entity.
 
         Args:
-            project_id: The internal UUID of the project.
             subject_id: The UUID of the source entity.
             predicate: Optional relationship type filter.
             limit: Maximum results per page.
         """
+        pid = await self._http.resolve_project_id()
+
         async def fetch_page(cursor: str | None = None) -> dict:
             params: dict[str, str | int] = {"subject_id": subject_id, "limit": limit}
             if predicate is not None:
@@ -120,7 +119,7 @@ class AsyncGraphClient:
                 params["cursor"] = cursor
             raw = await self._http.request(
                 "GET",
-                f"/v1/projects/{project_id}/graph/edges",
+                f"/v1/projects/{pid}/graph/edges",
                 params=params,
             )
             data = raw.get("data", raw)
@@ -134,23 +133,19 @@ class AsyncGraphClient:
 
     async def communities(
         self,
-        project_id: str,
     ) -> list[GraphCommunity]:
         """List community summary nodes.
-
-        Args:
-            project_id: The internal UUID of the project.
         """
+        pid = await self._http.resolve_project_id()
         data = await self._http.request(
             "GET",
-            f"/v1/projects/{project_id}/graph/communities",
+            f"/v1/projects/{pid}/graph/communities",
         )
         items = data.get("data", [])
         return [GraphCommunity(**c) for c in items]
 
     async def search(
         self,
-        project_id: str,
         query: str,
         *,
         types: str = "episodes,facts",
@@ -159,7 +154,6 @@ class AsyncGraphClient:
         """Hybrid search across project memory.
 
         Args:
-            project_id: The internal UUID of the project.
             query: Search query string.
             types: Comma-separated result types (episodes, facts, entities).
             limit: Maximum results per type.
@@ -167,9 +161,10 @@ class AsyncGraphClient:
         Returns:
             List of result dicts with ``content``, ``score``, etc.
         """
+        pid = await self._http.resolve_project_id()
         data = await self._http.request(
             "GET",
-            f"/v1/projects/{project_id}/search",
+            f"/v1/projects/{pid}/search",
             params={"query": query, "types": types, "limit": str(limit)},
         )
         return data.get("results", [])

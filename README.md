@@ -27,7 +27,6 @@ print(f"User: {user.name} ({user.id})")
 
 # Ingest conversation messages
 resp = client.memory.ingest(
-    user.id,
     messages=[
         {"role": "user", "content": "Hi, I am Alice from Acme Corp."},
         {"role": "assistant", "content": "Hello Alice! How can I help you today?"},
@@ -36,7 +35,7 @@ resp = client.memory.ingest(
 print(f"Ingested {resp.episode_count} episodes")
 
 # Search across memory
-results = client.graph.search(user.id, "Alice Acme Corp", types="episodes,facts")
+results = client.graph.search("Alice Acme Corp", types="episodes,facts")
 for r in results:
     print(f"  - {r['content']}")
 ```
@@ -51,22 +50,22 @@ from openzync import OpenZync
 client = OpenZync(api_key="...")
 
 # ── Memory ──
-client.memory.ingest(user_id, messages=[...])
-client.memory.get_context(user_id, query="...")
-client.memory.delete(user_id)
+client.memory.ingest(messages=[...])
+client.memory.get_context(query="...")
+client.memory.delete()
 
 # ── Facts ──
-client.facts.add(user_id, facts=[...])
+client.facts.add(facts=[...])
 
 # ── Graph ──
-for node in client.graph.nodes(user_id):
+for node in client.graph.nodes():
     print(node.name)
-detail = client.graph.node_detail(user_id, node_id)
-client.graph.delete_node(user_id, node_id)
-for edge in client.graph.edges(user_id, subject_id):
+detail = client.graph.node_detail(node_id)
+client.graph.delete_node(node_id)
+for edge in client.graph.edges(subject_id):
     print(edge.type)
-comms = client.graph.communities(user_id)
-results = client.graph.search(user_id, "query")
+comms = client.graph.communities()
+results = client.graph.search("query")
 
 # ── Users ──
 user = client.users.create(external_id="bob")
@@ -77,9 +76,9 @@ for user in client.users.list_iter():
     print(user["name"])
 
 # ── Sessions ──
-session = client.sessions.create(user_id, external_id="s1")
-msgs = client.sessions.messages(user_id, session_id)
-client.sessions.delete(user_id, session_id)
+session = client.sessions.create(external_id="s1")
+msgs = client.sessions.messages(session_id)
+client.sessions.delete(session_id)
 ```
 
 ### Async
@@ -90,7 +89,7 @@ from openzync import AsyncOpenZync
 
 async def main():
     async with AsyncOpenZync(api_key="...") as client:
-        resp = await client.memory.ingest(user_id, messages=[...])
+        resp = await client.memory.ingest(messages=[...])
 
 asyncio.run(main())
 ```

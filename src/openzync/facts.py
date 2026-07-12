@@ -18,20 +18,19 @@ class AsyncFactsClient:
 
     async def add(
         self,
-        project_id: str,
         facts: list[FactTriple | dict],
         session_id: str | None = None,
     ) -> FactBatchResponse:
         """Ingest a batch of fact triples.
 
         Args:
-            project_id: The internal UUID of the project.
             facts: List of fact triples (max 500).
             session_id: Optional session external ID.
 
         Returns:
             ``FactBatchResponse`` with job_id and accepted count.
         """
+        pid = await self._http.resolve_project_id()
         body: dict = {
             "facts": [
                 f.model_dump(exclude_none=True) if isinstance(f, FactTriple) else f
@@ -43,7 +42,7 @@ class AsyncFactsClient:
 
         data = await self._http.request(
             "POST",
-            f"/v1/projects/{project_id}/facts",
+            f"/v1/projects/{pid}/facts",
             json_body=body,
         )
         return FactBatchResponse(**data)

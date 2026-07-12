@@ -5,7 +5,7 @@ Usage::
     from openzync import OpenZync
 
     client = OpenZync(api_key="oz_live_...")
-    result = client.memory.ingest("project-id", messages=[
+    result = client.memory.ingest(messages=[
         {"role": "user", "content": "Hello world"},
     ])
     print(result.episode_count)

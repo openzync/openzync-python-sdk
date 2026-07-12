@@ -124,7 +124,6 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         """Fetch messages from the OpenZync server for the given session."""
         try:
             resp = await self._client.sessions.messages(
-                self.project_id,
                 self.session_id,
                 limit=self._max_messages,
             )
@@ -147,7 +146,6 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             self._messages.append(message)
         _run_async(
             self._client.memory.ingest(
-                self.project_id,
                 messages=[_oz_message_from_base(message)],
                 session_id=self.session_id,
             )
@@ -159,7 +157,6 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             self._messages.extend(messages)
         _run_async(
             self._client.memory.ingest(
-                self.project_id,
                 messages=[_oz_message_from_base(m) for m in messages],
                 session_id=self.session_id,
             )
@@ -167,7 +164,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
 
     def clear(self) -> None:
         self._messages = []
-        _run_async(self._client.memory.delete(self.project_id))
+        _run_async(self._client.memory.delete())
 
     # ── Async interface (primitive) ─────────────────────────────────────
 
@@ -185,11 +182,10 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             self._messages.extend(messages)
         # Persist to server
         await self._client.memory.ingest(
-            self.project_id,
             messages=[_oz_message_from_base(m) for m in messages],
             session_id=self.session_id,
         )
 
     async def aclear(self) -> None:
         self._messages = []
-        await self._client.memory.delete(self.project_id)
+        await self._client.memory.delete()

@@ -9,10 +9,9 @@ class TestGraphClient:
     """Tests for ``AsyncGraphClient``."""
 
     @pytest.mark.asyncio
-    async def test_list_nodes(self, async_client, mock_http):
+    async def test_list_nodes(self, async_client, mock_http, mock_resolve):
         """GET /graph/nodes returns paginated entities."""
-        project_id = "p1"
-        mock_http.get(f"/v1/projects/{project_id}/graph/nodes").respond(json={
+        mock_http.get("/v1/projects/p1/graph/nodes").respond(json={
             "data": {
                 "items": [
                     {"id": "n1", "name": "Alice", "type": "Person", "summary": "",
@@ -26,7 +25,7 @@ class TestGraphClient:
         })
 
         nodes = []
-        async for node in await async_client.graph.nodes(project_id=project_id):
+        async for node in await async_client.graph.nodes():
             nodes.append(node)
 
         assert len(nodes) == 2
@@ -34,10 +33,9 @@ class TestGraphClient:
         assert nodes[1].type == "Organization"
 
     @pytest.mark.asyncio
-    async def test_search(self, async_client, mock_http):
+    async def test_search(self, async_client, mock_http, mock_resolve):
         """GET /search returns results."""
-        project_id = "p1"
-        mock_http.get(f"/v1/projects/{project_id}/search").respond(json={
+        mock_http.get("/v1/projects/p1/search").respond(json={
             "query": "Alice",
             "results": [
                 {"id": "e1", "content": "Alice works at Acme Corp", "score": 0.06,
@@ -46,6 +44,6 @@ class TestGraphClient:
             "total": 1,
         })
 
-        results = await async_client.graph.search(project_id=project_id, query="Alice")
+        results = await async_client.graph.search(query="Alice")
         assert len(results) == 1
         assert "Acme Corp" in results[0]["content"]

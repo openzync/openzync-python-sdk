@@ -45,6 +45,13 @@ def mock_http(base_url: str) -> AsyncGenerator[respx.MockRouter, None]:
         yield respx_mock
 
 
+@pytest.fixture
+def mock_resolve(mock_http: respx.MockRouter) -> respx.MockRouter:
+    """Mock the project-id resolve endpoint — auto-resolve of project_id from API key."""
+    mock_http.get("/v1/api-key/project-id").respond(json={"project_id": "p1"})
+    return mock_http
+
+
 def mock_response(data: dict, status: int = 200) -> Response:
     """Create a mock JSON response."""
     return Response(status, json=data)

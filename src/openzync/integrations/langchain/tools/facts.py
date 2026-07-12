@@ -78,7 +78,7 @@ class AddFactsTool(BaseTool):
                 }
             )
 
-        result = await self.client.facts.add(project_id, normalized)
+        result = await self.client.facts.add(normalized)
         return (
             f"Accepted {result.accepted_count} fact(s) "
             f"(job_id: {result.job_id})."

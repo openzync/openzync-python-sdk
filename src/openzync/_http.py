@@ -54,6 +54,7 @@ class AsyncHTTPTransport:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._max_retries = max_retries
+        self._project_id: str | None = None
 
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
@@ -173,3 +174,31 @@ class AsyncHTTPTransport:
         """Exponential backoff sleep."""
         delay = BASE_DELAY * (2 ** attempt)
         await asyncio.sleep(delay)
+
+    async def resolve_project_id(self) -> str:
+        """Resolve the project_id from the API key via the backend.
+
+        Cached in memory for the lifetime of the client — the resolve
+        endpoint is called at most once.  Subsequent calls return the
+        cached value.
+
+        Returns:
+            The project UUID string scoped to this API key.
+
+        Raises:
+            ValueError: If the API key is not scoped to a project (e.g.
+                org-wide keys that were created before project scoping).
+            AuthenticationError: If the key is revoked or invalid.
+        """
+        if self._project_id is not None:
+            return self._project_id
+
+        data = await self.request("GET", "/v1/api-key/project-id")
+        pid: str | None = data.get("project_id")
+        if pid is None:
+            raise ValueError(
+                "Could not determine project_id from API key. "
+                "Ensure your API key is scoped to a project."
+            )
+        self._project_id = pid
+        return pid
