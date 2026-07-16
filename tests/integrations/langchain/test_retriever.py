@@ -119,5 +119,5 @@ class TestOZGraphRetriever:
         await retriever._aget_relevant_documents("test query")
 
         mock_client.graph.search.assert_awaited_once_with(
-            "project-1", "test query", types="facts", limit=10
+            "test query", types="facts", limit=10
         )

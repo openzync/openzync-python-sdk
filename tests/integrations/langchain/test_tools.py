@@ -121,12 +121,11 @@ class TestAddFactsTool:
         # The tool normalizes dicts, adding content/confidence defaults
         mock_client.facts.add.assert_awaited_once()
         call_args = mock_client.facts.add.await_args
-        assert call_args.args[0] == "project-1"
         expected = [
             {"subject": "Alice", "predicate": "likes", "object": "Python",
              "content": None, "confidence": 1.0},
         ]
-        assert call_args.args[1] == expected
+        assert call_args.args[0] == expected
 
 
 class TestListGraphNodesTool:

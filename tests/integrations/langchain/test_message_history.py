@@ -111,8 +111,6 @@ class TestOZChatMessageHistory:
 
         mock_client.memory.ingest.assert_awaited_once()
         call_args = mock_client.memory.ingest.await_args
-        # project_id is the first positional arg
-        assert call_args.args[0] == "project-1"
         assert call_args.kwargs["session_id"] == "session-1"
         assert call_args.kwargs["messages"] == [{"role": "user", "content": "Hi"}]
 
@@ -148,7 +146,7 @@ class TestOZChatMessageHistory:
         history._messages = [HumanMessage(content="Hi")]  # seed cache
         await history.aclear()
 
-        mock_client.memory.delete.assert_awaited_once_with("project-1")
+        mock_client.memory.delete.assert_awaited_once_with()
         assert history._messages == []
 
     def test_add_message_sync_ingests(self, mock_client):
