@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/openzync)](https://pypi.org/project/openzync/)
 [![License](https://img.shields.io/pypi/l/openzync)](https://www.apache.org/licenses/LICENSE-2.0)
 
-Python SDK for [OpenZync](https://github.com/rohnsha0/openzync) — the open-source agent memory platform with persistent, queryable, graph-based memory for AI agents.
+Python SDK for [OpenZync](https://github.com/openzync/openzync-core) — the open-source agent memory platform with persistent, queryable, graph-based memory for AI agents.
 
 ## Installation
 
@@ -12,7 +12,7 @@ Python SDK for [OpenZync](https://github.com/rohnsha0/openzync) — the open-sou
 pip install openzync
 ```
 
-Requires Python 3.11+.
+Requires Python 3.11+. Published on [PyPI](https://pypi.org/project/openzync/).
 
 ## Quick Start
 
@@ -211,7 +211,9 @@ tools = [
 ## Development
 
 ```bash
-# Install with dev dependencies
+# Clone and install with dev dependencies
+git clone https://github.com/openzync/openzync-sdk-python.git
+cd openzync-sdk-python
 pip install "openzync[dev]"
 
 # Install everything (dev + langchain)
@@ -220,3 +222,13 @@ pip install "openzync[dev,langchain]"
 # Run tests
 pytest
 ```
+
+## Related
+
+- [openzync-core](https://github.com/openzync/openzync-core) — backend API
+- [openzync-mcp](https://github.com/openzync/openzync-mcp) — MCP server (uses this SDK)
+- [openzync-docs](https://openzync.readthedocs.io) — full documentation
+
+## License
+
+Apache 2.0 — see [LICENSE](./LICENSE).
