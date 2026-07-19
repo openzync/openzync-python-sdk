@@ -56,13 +56,22 @@ class AsyncHTTPTransport:
         self._max_retries = max_retries
         self._project_id: str | None = None
 
+        # ponytail: browser-like UA + HTTP/2 + Accept header to reduce
+        # Cloudflare JS challenge likelihood from datacenter IPs.
+        # SDK identity moved to X-SDK-Version header.
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             timeout=httpx.Timeout(timeout),
+            http2=True,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": f"openzync/{_sdk_version}",
+                "Accept": "application/json",
+                "User-Agent": (
+                    "Mozilla/5.0 (compatible; OpenZyncSDK/1.0; "
+                    f"+https://openzync.tech; {_sdk_version})"
+                ),
+                "X-SDK-Version": _sdk_version,
             },
         )
 
