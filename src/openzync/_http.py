@@ -56,7 +56,7 @@ class AsyncHTTPTransport:
         self._max_retries = max_retries
         self._project_id: str | None = None
 
-        # ponytail: browser-like UA + HTTP/2 + Accept header to reduce
+        # browser-like UA + HTTP/2 + Accept header to reduce
         # Cloudflare JS challenge likelihood from datacenter IPs.
         # SDK identity moved to X-SDK-Version header.
         self._client = httpx.AsyncClient(
@@ -65,7 +65,6 @@ class AsyncHTTPTransport:
             http2=True,
             headers={
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
                 "Accept": "application/json",
                 "User-Agent": (
                     "Mozilla/5.0 (compatible; OpenZyncSDK/1.0; "
@@ -171,6 +170,87 @@ class AsyncHTTPTransport:
             url=url,
             json=json_body,
             params=params,
+        )
+
+    async def request_multipart(
+        self,
+        method: str,
+        path: str,
+        data: dict[str, str] | None = None,
+        files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
+        params: dict[str, str | int] | None = None,
+    ) -> Any:
+        """Make a multipart/form-data HTTP request with optional file uploads.
+
+        Used for endpoints that accept both structured JSON and binary
+        file blobs (e.g. memory ingestion).
+
+        Args:
+            method: HTTP method (``"POST"``, ``"PUT"``, etc.).
+            path: API path (e.g. ``/v1/projects/{pid}/memory``).
+            data: Form fields as a dict of string values.  The JSON
+                payload should be passed as ``{"data": json.dumps(...)}``.
+            files: List of file fields as ``(field_name, (filename, bytes, mime_type))``
+                tuples, matching httpx's ``files`` parameter format.
+            params: Optional query parameters.
+
+        Returns:
+            Parsed JSON response body.
+
+        Raises:
+            OpenZyncError: On HTTP errors (mapped from RFC 7807).
+            httpx.TimeoutException: On timeout after retries.
+        """
+        url = self._build_url(path)
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await self._client.request(
+                    method=method,
+                    url=url,
+                    data=data,
+                    files=files,
+                    params=params,
+                )
+            except httpx.TimeoutException as exc:
+                logger.warning(
+                    "http.multipart_timeout",
+                    extra={"url": url, "attempt": attempt},
+                )
+                if attempt < self._max_retries:
+                    await self._wait(attempt)
+                    continue
+                raise OpenZyncError(
+                    message=f"Request timed out after {self._max_retries} retries: {exc}",
+                    status_code=504,
+                ) from exc
+
+            if response.status_code in RETRYABLE_STATUSES and attempt < self._max_retries:
+                logger.info(
+                    "http.multipart_retry",
+                    extra={"url": url, "status": response.status_code, "attempt": attempt},
+                )
+                await self._wait(attempt)
+                continue
+
+            if response.status_code == 204:
+                return None
+
+            if response.is_error:
+                try:
+                    body = response.json()
+                except Exception:
+                    body = {"detail": response.text}
+                raise_on_error(response.status_code, body)
+
+            try:
+                return response.json()
+            except Exception:
+                return {"_raw": response.text}
+
+        raise OpenZyncError(
+            message=f"Request failed after {self._max_retries} retries",
+            status_code=500,
         )
 
     def _build_url(self, path: str) -> str:

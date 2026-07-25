@@ -1,6 +1,7 @@
 """Re-export all Pydantic models for convenient imports."""
 
 from openzync.models.memory import (
+    BlobMetadata,
     IngestMemoryRequest,
     IngestMemoryResponse,
     ContextResponse,
@@ -33,6 +34,7 @@ from openzync.models.session import (
 )
 
 __all__ = [
+    "BlobMetadata",
     "IngestMemoryRequest",
     "IngestMemoryResponse",
     "ContextResponse",
