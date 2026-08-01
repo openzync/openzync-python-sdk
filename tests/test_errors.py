@@ -7,7 +7,13 @@ from httpx import Response
 
 from openzync._errors import (
     AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    ExternalServiceError,
+    GraphTimeoutError,
     NotFoundError,
+    OpenZyncError,
+    PayloadTooLargeError,
     RateLimitError,
     ValidationError,
     raise_on_error,
@@ -38,9 +44,41 @@ class TestErrorMapping:
             raise_on_error(404, {"detail": "User not found", "user_id": "abc"})
         assert "User not found" in str(exc.value)
 
+    def test_403_raises_authorization_error(self):
+        with pytest.raises(AuthorizationError):
+            raise_on_error(403, {"detail": "Forbidden"})
+
+    def test_409_raises_conflict_error(self):
+        with pytest.raises(ConflictError):
+            raise_on_error(409, {"detail": "Conflict"})
+
+    def test_413_raises_payload_too_large_error(self):
+        with pytest.raises(PayloadTooLargeError):
+            raise_on_error(413, {"detail": "Too large"})
+
+    def test_502_raises_external_service_error(self):
+        with pytest.raises(ExternalServiceError):
+            raise_on_error(502, {"detail": "Upstream error"})
+
+    def test_504_raises_graph_timeout_error(self):
+        with pytest.raises(GraphTimeoutError):
+            raise_on_error(504, {"detail": "Graph timeout"})
+
     def test_unknown_status_falls_back(self):
-        with pytest.raises(Exception):
+        with pytest.raises(OpenZyncError):
             raise_on_error(599, {"detail": "Unknown error"})
+
+    def test_error_constructs_with_extra_detail(self):
+        """Extra keys in body become detail dict."""
+        with pytest.raises(NotFoundError) as exc:
+            raise_on_error(404, {"detail": "Not found", "resource": "user"})
+        assert exc.value.detail == {"resource": "user"}
+
+    def test_openzync_error_custom_status(self):
+        """OpenZyncError accepts custom status_code."""
+        err = OpenZyncError(message="custom", status_code=418)
+        assert err.status_code == 418
+        assert str(err) == "custom"
 
 
 class TestHTTPRetry:

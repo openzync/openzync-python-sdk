@@ -121,3 +121,30 @@ class TestOZGraphRetriever:
         mock_client.graph.search.assert_awaited_once_with(
             "test query", types="facts", limit=10
         )
+
+    def test_sync_get_relevant_documents(self, mock_client):
+        """Sync _get_relevant_documents delegates to async."""
+        mock_client.graph.search.return_value = SAMPLE_SEARCH_RESULTS
+
+        retriever = OZGraphRetriever(
+            client=mock_client,
+            project_id="project-1",
+            k=5,
+        )
+        docs = retriever._get_relevant_documents("Alice Acme Corp")
+        assert len(docs) == 3
+        assert docs[0].page_content == SAMPLE_SEARCH_RESULTS[0]["content"]
+
+    def test_result_with_name_fallback(self, mock_client):
+        """When content is empty, falls back to name."""
+        mock_client.graph.search.return_value = [
+            {"content": "", "score": 0.9, "type": "entity",
+             "name": "Fallback Name", "node_id": "n1"},
+        ]
+
+        retriever = OZGraphRetriever(
+            client=mock_client,
+            project_id="project-1",
+        )
+        docs = retriever._get_relevant_documents("test")
+        assert docs[0].page_content == "Fallback Name"

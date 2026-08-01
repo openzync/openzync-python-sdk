@@ -75,6 +75,50 @@ class TestProjectsClient:
         assert result["data"][0]["name"] == "Project 1"
 
     @pytest.mark.asyncio
+    async def test_list_projects_with_cursor(self, async_client, mock_http):
+        """GET /projects passes offset from cursor."""
+        mock_http.get("/v1/projects").respond(json={
+            "data": [],
+            "next_cursor": None,
+            "has_more": False,
+        })
+
+        result = await async_client.projects.list(cursor="10")
+        assert len(result["data"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_list_projects_flat_array(self, async_client, mock_http):
+        """GET /projects handles flat array response."""
+        mock_http.get("/v1/projects").respond(json=[
+            {"id": "p1", "name": "Project 1", "metadata": {},
+             "is_archived": False, "member_count": 1, "created_by": "u1",
+             "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+        ])
+
+        result = await async_client.projects.list()
+        assert len(result["data"]) == 1
+        assert result["next_cursor"] is None
+
+    @pytest.mark.asyncio
+    async def test_list_iter(self, async_client, mock_http):
+        """list_iter yields paginated projects."""
+        mock_http.get("/v1/projects").respond(json={
+            "data": [
+                {"id": "p1", "name": "Project 1", "metadata": {},
+                 "is_archived": False, "member_count": 1, "created_by": "u1",
+                 "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+            ],
+            "next_cursor": None,
+            "has_more": False,
+        })
+
+        projects = []
+        async for project in async_client.projects.list_iter():
+            projects.append(project)
+        assert len(projects) == 1
+        assert projects[0]["name"] == "Project 1"
+
+    @pytest.mark.asyncio
     async def test_update_project(self, async_client, mock_http, mock_resolve):
         """PUT /projects/{id} updates and returns project."""
         mock_http.put("/v1/projects/p1").respond(json={
@@ -151,3 +195,15 @@ class TestProjectsClient:
         result = await async_client.projects.list_members()
         assert len(result["data"]) == 2
         assert result["data"][0]["role"] == "owner"
+
+    @pytest.mark.asyncio
+    async def test_list_members_with_cursor(self, async_client, mock_http, mock_resolve):
+        """GET /projects/{id}/members passes cursor."""
+        mock_http.get("/v1/projects/p1/members").respond(json={
+            "data": [],
+            "next_cursor": None,
+            "has_more": False,
+        })
+
+        result = await async_client.projects.list_members(cursor="c1")
+        assert len(result["data"]) == 0

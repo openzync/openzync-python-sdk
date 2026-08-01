@@ -90,3 +90,37 @@ class TestUsersClient:
 
         result = await async_client.users.list()
         assert len(result["data"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_users_with_cursor(self, async_client, mock_http):
+        """GET /users passes cursor param."""
+        mock_http.get("/v1/users").respond(json={
+            "data": [],
+            "next_cursor": None,
+            "has_more": False,
+        })
+
+        result = await async_client.users.list(cursor="abc")
+        assert len(result["data"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_list_iter(self, async_client, mock_http):
+        """list_iter yields paginated user results."""
+        mock_http.get("/v1/users").respond(json={
+            "data": [
+                {"id": "u1", "external_id": "alice", "name": "Alice",
+                 "organization_id": "org-1",
+                 "created_at": "2026-01-01T00:00:00Z",
+                 "updated_at": "2026-01-01T00:00:00Z",
+                 "is_deleted": False,
+                 "message_count": 0, "fact_count": 0, "session_count": 0},
+            ],
+            "next_cursor": None,
+            "has_more": False,
+        })
+
+        users = []
+        async for user in async_client.users.list_iter():
+            users.append(user)
+        assert len(users) == 1
+        assert users[0]["external_id"] == "alice"

@@ -53,6 +53,34 @@ class TestMemoryClient:
         assert result.episode_count == 1
 
     @pytest.mark.asyncio
+    async def test_ingest_memory_with_idempotency_key(self, async_client, mock_http, mock_resolve):
+        """POST /memory with Idempotency-Key header."""
+        mock_http.post("/v1/projects/p1/memory").respond(
+            status_code=202, json={"job_id": "j1", "episode_count": 1, "status": "accepted"}
+        )
+
+        result = await async_client.memory.ingest(
+            messages=[{"role": "user", "content": "test"}],
+            idempotency_key="idem-1",
+        )
+        assert result.job_id == "j1"
+
+    @pytest.mark.asyncio
+    async def test_ingest_memory_with_blobs(self, async_client, mock_http, mock_resolve):
+        """POST /memory with file blobs (multipart)."""
+        mock_http.post("/v1/projects/p1/memory").respond(
+            status_code=202,
+            json={"job_id": "j2", "episode_count": 1, "blob_count": 1, "status": "accepted"},
+        )
+
+        result = await async_client.memory.ingest(
+            messages=[{"role": "user", "content": "see attachment"}],
+            blobs=[("photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")],
+        )
+        assert result.job_id == "j2"
+        assert result.blob_count == 1
+
+    @pytest.mark.asyncio
     async def test_get_context(self, async_client, mock_http, mock_resolve):
         """GET /context returns context text."""
         expected = {

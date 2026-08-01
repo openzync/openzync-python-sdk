@@ -9,7 +9,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from openzync._errors import NotFoundError
 from openzync.client import AsyncOpenZync
-from openzync.integrations.langchain.message_history import OZChatMessageHistory
+from openzync.integrations.langchain.message_history import (
+    OZChatMessageHistory,
+    _oz_message_from_base,
+    _base_message_from_oz,
+)
 from openzync.models.session import SessionMessagesResponse
 
 # Sample messages as returned by the API
@@ -189,3 +193,98 @@ class TestOZChatMessageHistory:
         msgs.append(AIMessage(content="World"))
         # Internal cache should not have changed
         assert len(history._messages) == 1
+
+    def test_messages_property_cold_cache(self, mock_client):
+        """Messages property fetches from server when cache is cold."""
+        mock_client.sessions.messages.return_value = SessionMessagesResponse(
+            data=SAMPLE_MESSAGES
+        )
+
+        history = OZChatMessageHistory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        msgs = history.messages  # cache is cold — fetches from server
+        assert len(msgs) == 2
+        assert msgs[0].content == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_aadd_messages_empty(self, mock_client):
+        """Adding no messages is a no-op."""
+        history = OZChatMessageHistory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        history._messages = []
+
+        await history.aadd_messages([])
+        # No exception — early return
+        assert history._messages == []
+
+    @pytest.mark.asyncio
+    async def test_aadd_messages_truncates(self, mock_client):
+        """Adding more than max_messages truncates old messages."""
+        mock_client.sessions.messages.side_effect = NotFoundError("no session")
+        mock_client.memory.ingest = AsyncMock()
+
+        history = OZChatMessageHistory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+            max_messages=2,
+        )
+        await history.aadd_messages([
+            HumanMessage(content="1"),
+            HumanMessage(content="2"),
+            HumanMessage(content="3"),
+        ])
+
+        # After truncation, only last 2 should be in the ingest call
+        call = mock_client.memory.ingest.await_args
+        assert call is not None
+        ingested = call.kwargs["messages"]
+        assert ingested == [{"role": "user", "content": "2"},
+                            {"role": "user", "content": "3"}]
+
+    def test_sync_add_messages(self, mock_client):
+        """Sync add_messages wraps async call."""
+        mock_client.memory.ingest = AsyncMock()
+        history = OZChatMessageHistory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        history._messages = []
+        history.add_messages([HumanMessage(content="sync")])
+        mock_client.memory.ingest.assert_called_once()
+
+    def test_sync_clear(self, mock_client):
+        """Sync clear resets cache and calls delete."""
+        mock_client.memory.delete = AsyncMock()
+        history = OZChatMessageHistory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        history._messages = [HumanMessage(content="Hi")]
+        history.clear()
+        assert history._messages == []
+        mock_client.memory.delete.assert_called_once()
+
+    def test_message_conversion_roundtrip(self):
+        """_oz_message_from_base and _base_message_from_oz are inverses."""
+        msg = HumanMessage(content="test")
+        oz_dict = _oz_message_from_base(msg)
+        assert oz_dict == {"role": "user", "content": "test"}
+
+        restored = _base_message_from_oz(oz_dict)
+        assert restored.content == "test"
+        assert isinstance(restored, HumanMessage)
+
+    def test_base_message_from_oz_unknown_role(self):
+        """Unknown role defaults to HumanMessage."""
+        msg = _base_message_from_oz({"role": "unknown", "content": "hi"})
+        assert isinstance(msg, HumanMessage)
+        assert msg.content == "hi"

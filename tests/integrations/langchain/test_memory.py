@@ -167,3 +167,67 @@ class TestOZMemory:
         ]
         result = _messages_to_string(msgs)
         assert result == "HUMAN: Hello\nAI: World"
+
+    def test_chat_memory_not_initialized_raises(self):
+        """Accessing chat_memory before model_post_init raises ValueError."""
+        memory = OZMemory.model_construct(
+            session_id="s1",
+            project_id="p1",
+            client=AsyncMock(),
+        )
+        # Override _chat_memory to simulate uninitialized state
+        object.__setattr__(memory, "_chat_memory", None)
+        with pytest.raises(ValueError, match="not initialized"):
+            _ = memory.chat_memory
+
+    def test_save_context_fallback_input_key(self, mock_client):
+        """save_context auto-detects input key."""
+        memory = OZMemory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        memory._chat_memory._messages = []
+
+        memory.save_context({"input": "Hello"}, {"output": "World"})
+        assert memory._chat_memory._messages[0].content == "Hello"
+
+    def test_get_input_fallback(self, mock_client):
+        """_get_input uses first value when no key matches."""
+        memory = OZMemory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        result = memory._get_input({"other_key": "fallback_val"})
+        assert result == "fallback_val"
+
+    def test_get_input_last_resort(self, mock_client):
+        """_get_input falls back to first value when all keys match memory_key."""
+        memory = OZMemory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        result = memory._get_input({"chat_history": "history_val"})
+        assert result == "history_val"
+
+    def test_get_output_fallback(self, mock_client):
+        """_get_output uses first value when no key matches."""
+        memory = OZMemory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        result = memory._get_output({"response": "output_val"})
+        assert result == "output_val"
+
+    def test_get_output_last_resort(self, mock_client):
+        """_get_output falls back to first value when all keys match memory_key."""
+        memory = OZMemory(
+            session_id="session-1",
+            project_id="project-1",
+            client=mock_client,
+        )
+        result = memory._get_output({"chat_history": "hist_out"})
+        assert result == "hist_out"

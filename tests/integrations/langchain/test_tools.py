@@ -27,6 +27,24 @@ def mock_client():
     return client
 
 
+class AsyncIterableMock:
+    """Mock that can be used in ``async for`` loops."""
+
+    def __init__(self, items: list):
+        self._items = items
+        self._idx = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._idx >= len(self._items):
+            raise StopAsyncIteration
+        item = self._items[self._idx]
+        self._idx += 1
+        return item
+
+
 class TestGraphSearchTool:
     """Tests for GraphSearchTool."""
 
@@ -74,6 +92,15 @@ class TestGraphSearchTool:
         result = await tool._arun(query="nothing", project_id="project-1")
         assert result == "No results found."
 
+    def test_run_sync(self, mock_client):
+        """Sync _run delegates to async."""
+        mock_client.graph.search.return_value = [
+            {"content": "sync result", "score": 0.5, "type": "entity"},
+        ]
+        tool = GraphSearchTool(client=mock_client)
+        result = tool._run(query="test", project_id="project-1")
+        assert "sync result" in result
+
 
 class TestGraphNodeDetailTool:
     """Tests for GraphNodeDetailTool."""
@@ -82,6 +109,127 @@ class TestGraphNodeDetailTool:
         tool = GraphNodeDetailTool(client=mock_client)
         assert tool.name == "graph_node_detail"
         assert tool.args_schema == GraphNodeDetailInput
+
+    @pytest.mark.asyncio
+    async def test_arun_returns_details(self, mock_client):
+        """_arun formats node details with edges."""
+        from openzync.models.graph import GraphNode, GraphEdge, GraphNodeDetail
+
+        detail = GraphNodeDetail(
+            node=GraphNode(id="n1", name="Alice", type="Person", summary="Engineer",
+                           created_at="2026-01-01T00:00:00Z", metadata={}),
+            edges=[
+                GraphEdge(id="e1", source_id="n1", target_id="n2",
+                          type="works_at", weight=1.0,
+                          created_at="2026-01-01T00:00:00Z", metadata={}),
+            ],
+        )
+        mock_client.graph.node_detail = AsyncMock(return_value=detail)
+
+        tool = GraphNodeDetailTool(client=mock_client)
+        result = await tool._arun(project_id="p1", node_id="n1")
+
+        assert "Alice" in result
+        assert "Person" in result
+        assert "--[works_at]-->" in result
+
+    @pytest.mark.asyncio
+    async def test_arun_without_edges(self, mock_client):
+        """_arun handles nodes with no edges."""
+        from openzync.models.graph import GraphNode, GraphNodeDetail
+
+        detail = GraphNodeDetail(
+            node=GraphNode(id="n2", name="Bob", type="Person", summary="Alone",
+                           created_at="2026-01-01T00:00:00Z", metadata={}),
+            edges=[],
+        )
+        mock_client.graph.node_detail = AsyncMock(return_value=detail)
+
+        tool = GraphNodeDetailTool(client=mock_client)
+        result = await tool._arun(project_id="p1", node_id="n2")
+
+        assert "Bob" in result
+        assert "Relationships:" in result
+
+    def test_run_sync(self, mock_client):
+        """Sync _run delegates to async."""
+        from openzync.models.graph import GraphNode, GraphNodeDetail
+
+        detail = GraphNodeDetail(
+            node=GraphNode(id="n1", name="Alice", type="Person", summary="E",
+                           created_at="2026-01-01T00:00:00Z", metadata={}),
+            edges=[],
+        )
+        mock_client.graph.node_detail = AsyncMock(return_value=detail)
+
+        tool = GraphNodeDetailTool(client=mock_client)
+        result = tool._run(project_id="p1", node_id="n1")
+        assert "Alice" in result
+
+
+class TestListGraphNodesTool:
+    """Tests for ListGraphNodesTool."""
+
+    def test_name_and_args_schema(self, mock_client):
+        tool = ListGraphNodesTool(client=mock_client)
+        assert tool.name == "list_graph_nodes"
+        assert tool.args_schema == ListGraphNodesInput
+
+    @pytest.mark.asyncio
+    async def test_arun_lists_nodes(self, mock_client):
+        """_arun iterates nodes and formats them."""
+        from openzync.models.graph import GraphNode
+
+        mock_node = GraphNode(id="n1", name="Alice", type="Person", summary="",
+                              created_at="2026-01-01T00:00:00Z", metadata={})
+        mock_client.graph.nodes = AsyncMock(
+            return_value=AsyncIterableMock([mock_node])
+        )
+
+        tool = ListGraphNodesTool(client=mock_client)
+        result = await tool._arun(project_id="p1")
+
+        assert "Alice" in result
+        assert "(Person)" in result
+
+    @pytest.mark.asyncio
+    async def test_arun_empty(self, mock_client):
+        """_arun returns 'No nodes found' for empty result."""
+        mock_client.graph.nodes = AsyncMock(
+            return_value=AsyncIterableMock([])
+        )
+
+        tool = ListGraphNodesTool(client=mock_client)
+        result = await tool._arun(project_id="p1")
+        assert result == "No nodes found."
+
+    @pytest.mark.asyncio
+    async def test_arun_with_filters(self, mock_client):
+        """_arun passes entity_type and limit."""
+        mock_client.graph.nodes = AsyncMock(
+            return_value=AsyncIterableMock([])
+        )
+
+        tool = ListGraphNodesTool(client=mock_client)
+        await tool._arun(project_id="p1", entity_type="Person", limit=10)
+
+        mock_client.graph.nodes.assert_awaited_once_with(
+            entity_type="Person", limit=10
+        )
+
+    def test_run_sync(self, mock_client):
+        """Sync _run delegates to async."""
+        from openzync.models.graph import GraphNode
+
+        mock_node = GraphNode(id="n1", name="Alice", type="Person", summary="",
+                              created_at="2026-01-01T00:00:00Z", metadata={})
+        mock_client.graph.nodes = AsyncMock(
+            return_value=AsyncIterableMock([mock_node])
+        )
+
+        tool = ListGraphNodesTool(client=mock_client)
+        result = tool._run(project_id="p1")
+        assert "Alice" in result
 
 
 class TestAddFactsTool:
@@ -127,11 +275,13 @@ class TestAddFactsTool:
         ]
         assert call_args.args[0] == expected
 
+    def test_run_sync(self, mock_client):
+        """Sync _run delegates to async."""
+        mock_client.facts.add.return_value = AsyncMock(
+            accepted_count=1, job_id="job-1"
+        )
+        facts = [{"subject": "X", "predicate": "y", "object": "z"}]
 
-class TestListGraphNodesTool:
-    """Tests for ListGraphNodesTool."""
-
-    def test_name_and_args_schema(self, mock_client):
-        tool = ListGraphNodesTool(client=mock_client)
-        assert tool.name == "list_graph_nodes"
-        assert tool.args_schema == ListGraphNodesInput
+        tool = AddFactsTool(client=mock_client)
+        result = tool._run(project_id="p1", facts=facts)
+        assert "Accepted 1 fact(s)" in result
