@@ -29,6 +29,7 @@ class TestFactsClient:
                 {"subject": "Alice", "predicate": "works_at", "object": "Acme"},
                 {"subject": "Alice", "predicate": "likes", "object": "hiking"},
             ],
+            session_id="s1",
         )
 
         assert isinstance(result, FactBatchResponse)
@@ -57,5 +58,6 @@ class TestFactsClient:
 
         result = await async_client.facts.add(
             facts=[FactTriple(subject="Alice", predicate="knows", object="Bob")],
+            session_id="s1",
         )
         assert result.accepted_count == 1

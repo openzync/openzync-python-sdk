@@ -18,7 +18,7 @@ class FactTriple(BaseModel):
 class FactBatchRequest(BaseModel):
     """Request body for ``POST /v1/users/{user_id}/facts``."""
 
-    session_id: str | None = Field(default=None, description="Optional session ID.")
+    session_id: str = Field(..., description="Session external ID — required, all ingestion targets an existing session.")
     facts: list[FactTriple] = Field(..., min_length=1, max_length=500)
 
 

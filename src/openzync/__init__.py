@@ -7,7 +7,7 @@ Usage::
     client = OpenZync(api_key="oz_live_...")
     result = client.memory.ingest(messages=[
         {"role": "user", "content": "Hello world"},
-    ])
+    ], session_id="session-1")
     print(result.episode_count)
 """
 

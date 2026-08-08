@@ -25,7 +25,7 @@ class AsyncMemoryClient:
     async def ingest(
         self,
         messages: list[Message | dict],
-        session_id: str | None = None,
+        session_id: str,
         idempotency_key: str | None = None,
         blobs: list[tuple[str, bytes, str]] | None = None,
     ) -> IngestMemoryResponse:
@@ -38,7 +38,8 @@ class AsyncMemoryClient:
             messages: List of message objects (dict or Message).  Each message
                 may include a ``blobs`` array referencing uploaded files by
                 their positional index.
-            session_id: Optional session external ID.
+            session_id: Session external ID — required, all ingestion targets
+                an existing session.
             idempotency_key: Optional ``Idempotency-Key`` header.
             blobs: Optional list of ``(filename, data, mime_type)`` tuples.
                 When provided, the request is sent as ``multipart/form-data``
@@ -50,8 +51,7 @@ class AsyncMemoryClient:
         """
         pid = await self._http.resolve_project_id()
         body: dict = {"messages": [_as_message(m) for m in messages]}
-        if session_id is not None:
-            body["session_id"] = session_id
+        body["session_id"] = session_id
 
         headers = None
         if idempotency_key is not None:

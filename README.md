@@ -31,6 +31,7 @@ resp = client.memory.ingest(
         {"role": "user", "content": "Hi, I am Alice from Acme Corp."},
         {"role": "assistant", "content": "Hello Alice! How can I help you today?"},
     ],
+    session_id="session-1",
 )
 print(f"Ingested {resp.episode_count} episodes")
 
@@ -50,12 +51,12 @@ from openzync import OpenZync
 client = OpenZync(api_key="...")
 
 # ── Memory ──
-client.memory.ingest(messages=[...])
+client.memory.ingest(messages=[...], session_id="session-1")
 client.memory.get_context(query="...")
 client.memory.delete()
 
 # ── Facts ──
-client.facts.add(facts=[...])
+client.facts.add(facts=[...], session_id="session-1")
 
 # ── Graph ──
 for node in client.graph.nodes():
@@ -89,7 +90,7 @@ from openzync import AsyncOpenZync
 
 async def main():
     async with AsyncOpenZync(api_key="...") as client:
-        resp = await client.memory.ingest(messages=[...])
+        resp = await client.memory.ingest(messages=[...], session_id="session-1")
 
 asyncio.run(main())
 ```

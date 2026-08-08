@@ -251,7 +251,7 @@ class TestAddFactsTool:
             {"subject": "Alice", "predicate": "works_at", "object": "Acme"},
             {"subject": "Alice", "predicate": "role", "object": "Engineer"},
         ]
-        result = await tool._arun(project_id="project-1", facts=facts)
+        result = await tool._arun(project_id="project-1", session_id="session-1", facts=facts)
 
         assert "Accepted 2 fact(s)" in result
         assert "job-1" in result
@@ -264,7 +264,7 @@ class TestAddFactsTool:
 
         tool = AddFactsTool(client=mock_client)
         facts = [{"subject": "Alice", "predicate": "likes", "object": "Python"}]
-        await tool._arun(project_id="project-1", facts=facts)
+        await tool._arun(project_id="project-1", session_id="session-1", facts=facts)
 
         # The tool normalizes dicts, adding content/confidence defaults
         mock_client.facts.add.assert_awaited_once()
@@ -274,6 +274,7 @@ class TestAddFactsTool:
              "content": None, "confidence": 1.0},
         ]
         assert call_args.args[0] == expected
+        assert call_args.kwargs["session_id"] == "session-1"
 
     def test_run_sync(self, mock_client):
         """Sync _run delegates to async."""
@@ -283,5 +284,5 @@ class TestAddFactsTool:
         facts = [{"subject": "X", "predicate": "y", "object": "z"}]
 
         tool = AddFactsTool(client=mock_client)
-        result = tool._run(project_id="p1", facts=facts)
+        result = tool._run(project_id="p1", session_id="session-1", facts=facts)
         assert "Accepted 1 fact(s)" in result

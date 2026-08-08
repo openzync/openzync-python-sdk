@@ -29,7 +29,7 @@ class Message(BaseModel):
 class IngestMemoryRequest(BaseModel):
     """Request body for ``POST /v1/users/{user_id}/memory``."""
 
-    session_id: str | None = Field(default=None, description="Optional session external ID.")
+    session_id: str = Field(..., description="Session external ID — required, all ingestion targets an existing session.")
     messages: list[Message] = Field(..., min_length=1, max_length=1000)
 
 

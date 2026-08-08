@@ -32,7 +32,7 @@ class TestMemoryClient:
             Message(role="user", content="Hello"),
             Message(role="assistant", content="Hi there"),
         ]
-        result = await async_client.memory.ingest(messages=messages)
+        result = await async_client.memory.ingest(messages=messages, session_id="s1")
 
         assert isinstance(result, IngestMemoryResponse)
         assert result.job_id == "job-456"
@@ -61,6 +61,7 @@ class TestMemoryClient:
 
         result = await async_client.memory.ingest(
             messages=[{"role": "user", "content": "test"}],
+            session_id="s1",
             idempotency_key="idem-1",
         )
         assert result.job_id == "j1"
@@ -75,6 +76,7 @@ class TestMemoryClient:
 
         result = await async_client.memory.ingest(
             messages=[{"role": "user", "content": "see attachment"}],
+            session_id="s1",
             blobs=[("photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")],
         )
         assert result.job_id == "j2"
@@ -112,4 +114,4 @@ class TestMemoryClient:
         )
 
         with pytest.raises(Exception):
-            await async_client.memory.ingest(messages=[])
+            await async_client.memory.ingest(messages=[], session_id="s1")

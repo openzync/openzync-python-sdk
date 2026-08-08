@@ -5,7 +5,10 @@ Usage::
     from openzync import AsyncOpenZync
 
     async with AsyncOpenZync(api_key="oz_live_...") as client:
-        resp = await client.memory.ingest(messages=[{"role":"user","content":"Hello"}])
+        resp = await client.memory.ingest(
+            messages=[{"role": "user", "content": "Hello"}],
+            session_id="session-1",
+        )
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ class AsyncOpenZync:
     Usage::
 
         async with AsyncOpenZync(api_key="...") as client:
-            resp = await client.memory.ingest(messages=[...])
+            resp = await client.memory.ingest(messages=[...], session_id="session-1")
     """
 
     def __init__(
@@ -81,7 +84,7 @@ class OpenZync:
     Usage::
 
         client = OpenZync(api_key="...")
-        resp = client.memory.ingest(messages=[...])
+        resp = client.memory.ingest(messages=[...], session_id="session-1")
     """
 
     def __init__(

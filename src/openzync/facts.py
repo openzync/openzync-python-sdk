@@ -19,13 +19,14 @@ class AsyncFactsClient:
     async def add(
         self,
         facts: list[FactTriple | dict],
-        session_id: str | None = None,
+        session_id: str,
     ) -> FactBatchResponse:
         """Ingest a batch of fact triples.
 
         Args:
             facts: List of fact triples (max 500).
-            session_id: Optional session external ID.
+            session_id: Session external ID — required, all ingestion targets
+                an existing session.
 
         Returns:
             ``FactBatchResponse`` with job_id and accepted count.
@@ -36,9 +37,8 @@ class AsyncFactsClient:
                 f.model_dump(exclude_none=True) if isinstance(f, FactTriple) else f
                 for f in facts
             ],
+            "session_id": session_id,
         }
-        if session_id is not None:
-            body["session_id"] = session_id
 
         data = await self._http.request(
             "POST",
