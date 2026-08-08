@@ -59,9 +59,6 @@ class AsyncMemoryClient:
         headers = None
         if idempotency_key is not None:
             headers = {"Idempotency-Key": idempotency_key}
-        # ⚠️ NOTE: `headers` is never passed to the transport — the
-        # Idempotency-Key is silently dropped. Pre-existing, separate from
-        # this fix.
 
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None
         if blobs:
@@ -77,6 +74,7 @@ class AsyncMemoryClient:
             f"/v1/projects/{pid}/memory",
             data={"data": json.dumps(body)},
             files=files,
+            headers=headers,
             params=None,
         )
         return IngestMemoryResponse(**data)

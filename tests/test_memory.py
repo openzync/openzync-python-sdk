@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from httpx import Response
 
 from openzync.models.memory import (
     IngestMemoryResponse,
     Message,
 )
-from tests.conftest import mock_error_response, mock_response
 
 
 class TestMemoryClient:
@@ -54,8 +52,9 @@ class TestMemoryClient:
 
     @pytest.mark.asyncio
     async def test_ingest_memory_with_idempotency_key(self, async_client, mock_http, mock_resolve):
-        """POST /memory with Idempotency-Key header."""
-        mock_http.post("/v1/projects/p1/memory").respond(
+        """POST /memory sends the Idempotency-Key header on the wire."""
+        route = mock_http.post("/v1/projects/p1/memory")
+        route.respond(
             status_code=202, json={"job_id": "j1", "episode_count": 1, "status": "accepted"}
         )
 
@@ -65,6 +64,9 @@ class TestMemoryClient:
             idempotency_key="idem-1",
         )
         assert result.job_id == "j1"
+
+        request = route.calls.last.request
+        assert request.headers["idempotency-key"] == "idem-1"
 
     @pytest.mark.asyncio
     async def test_ingest_memory_text_only_sends_multipart(

@@ -184,12 +184,17 @@ class AsyncHTTPTransport:
         path: str,
         data: dict[str, str] | None = None,
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
+        headers: dict[str, str] | None = None,
         params: dict[str, str | int] | None = None,
     ) -> Any:
         """Make a multipart/form-data HTTP request with optional file uploads.
 
         Used for endpoints that accept both structured JSON and binary
         file blobs (e.g. memory ingestion).
+
+        Per-request ``headers`` are merged with the client-level headers
+        (Authorization, User-Agent, X-SDK-Version stay intact — httpx merges,
+        per-request wins on overlap).
 
         Args:
             method: HTTP method (``"POST"``, ``"PUT"``, etc.).
@@ -198,6 +203,7 @@ class AsyncHTTPTransport:
                 payload should be passed as ``{"data": json.dumps(...)}``.
             files: List of file fields as ``(field_name, (filename, bytes, mime_type))``
                 tuples, matching httpx's ``files`` parameter format.
+            headers: Optional per-request headers (e.g. ``Idempotency-Key``).
             params: Optional query parameters.
 
         Returns:
@@ -216,6 +222,7 @@ class AsyncHTTPTransport:
                     url=url,
                     data=data,
                     files=files or _EMPTY_FILES,
+                    headers=headers,
                     params=params,
                 )
             except httpx.TimeoutException as exc:

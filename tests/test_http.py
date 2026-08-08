@@ -117,6 +117,24 @@ class TestAsyncHTTPTransport:
             assert result == {"status": "accepted"}
 
     @pytest.mark.asyncio
+    async def test_request_multipart_merges_per_request_headers(self, transport):
+        """Per-request headers reach the wire and don't clobber client headers."""
+        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
+            route = mock.post("/v1/upload")
+            route.respond(status_code=202, json={"status": "accepted"})
+
+            await transport.request_multipart(
+                "POST",
+                "/v1/upload",
+                data={"key": "value"},
+                headers={"Idempotency-Key": "k1"},
+            )
+
+            request = route.calls.last.request
+            assert request.headers["idempotency-key"] == "k1"
+            assert request.headers["authorization"] == f"Bearer {TEST_API_KEY}"
+
+    @pytest.mark.asyncio
     async def test_request_multipart_204(self, transport):
         """request_multipart with 204 returns None."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
