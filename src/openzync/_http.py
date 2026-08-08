@@ -33,6 +33,12 @@ BASE_DELAY: float = 1.0
 DEFAULT_TIMEOUT: float = 30.0
 """Default per-request timeout in seconds."""
 
+# httpx encodes ``data`` as ``application/x-www-form-urlencoded`` unless
+# ``files`` is truthy — an empty list/dict silently downgrades a multipart
+# call.  ``_EMPTY_FILES`` is truthy yet iterates to zero parts, forcing
+# genuine multipart encoding with no file parts (a valid ``data``-only form).
+_EMPTY_FILES = iter(())
+
 
 class AsyncHTTPTransport:
     """Low-level async HTTP transport with retry, auth, and error mapping.
@@ -209,7 +215,7 @@ class AsyncHTTPTransport:
                     method=method,
                     url=url,
                     data=data,
-                    files=files,
+                    files=files or _EMPTY_FILES,
                     params=params,
                 )
             except httpx.TimeoutException as exc:

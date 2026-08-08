@@ -31,8 +31,11 @@ class AsyncMemoryClient:
     ) -> IngestMemoryResponse:
         """Ingest conversation messages into a project's memory.
 
-        Supports optional file attachments (images, PDFs, documents) which
-        are uploaded as multipart form data.
+        The request is always sent as ``multipart/form-data`` — even for
+        text-only calls — with the JSON payload in the ``data`` form field;
+        the backend rejects plain ``application/json`` bodies with 422.
+        Supports optional file attachments (images, PDFs, documents) uploaded
+        as ``blobs`` parts.
 
         Args:
             messages: List of message objects (dict or Message).  Each message
@@ -56,24 +59,26 @@ class AsyncMemoryClient:
         headers = None
         if idempotency_key is not None:
             headers = {"Idempotency-Key": idempotency_key}
+        # ⚠️ NOTE: `headers` is never passed to the transport — the
+        # Idempotency-Key is silently dropped. Pre-existing, separate from
+        # this fix.
 
+        files: list[tuple[str, tuple[str, bytes, str]]] | None = None
         if blobs:
-            files: list[tuple[str, tuple[str, bytes, str]]] = [
+            files = [
                 ("blobs", (name, data, mime)) for name, data, mime in blobs
             ]
-            data = await self._http.request_multipart(
-                "POST",
-                f"/v1/projects/{pid}/memory",
-                data={"data": json.dumps(body)},
-                files=files,
-                params=None,
-            )
-        else:
-            data = await self._http.request(
-                "POST",
-                f"/v1/projects/{pid}/memory",
-                json_body=body,
-            )
+
+        # Always multipart — the backend accepts only multipart/form-data,
+        # even for text-only calls. With no blobs the transport sends a
+        # `data`-only multipart form.
+        data = await self._http.request_multipart(
+            "POST",
+            f"/v1/projects/{pid}/memory",
+            data={"data": json.dumps(body)},
+            files=files,
+            params=None,
+        )
         return IngestMemoryResponse(**data)
 
     async def get_context(

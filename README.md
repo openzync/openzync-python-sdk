@@ -51,7 +51,7 @@ from openzync import OpenZync
 client = OpenZync(api_key="...")
 
 # ── Memory ──
-client.memory.ingest(messages=[...], session_id="session-1")
+client.memory.ingest(messages=[...], session_id="session-1")  # always sent as multipart/form-data, even text-only
 client.memory.get_context(query="...")
 client.memory.delete()
 

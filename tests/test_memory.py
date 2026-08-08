@@ -67,6 +67,30 @@ class TestMemoryClient:
         assert result.job_id == "j1"
 
     @pytest.mark.asyncio
+    async def test_ingest_memory_text_only_sends_multipart(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """Text-only ingest is sent as multipart/form-data, not application/json.
+
+        The backend ``POST /v1/projects/{project_id}/memory`` endpoint accepts
+        only multipart/form-data (the ``data`` form field holds the JSON
+        payload) — a plain JSON body is rejected with 422.
+        """
+        route = mock_http.post("/v1/projects/p1/memory")
+        route.respond(
+            status_code=202,
+            json={"job_id": "j3", "episode_count": 1, "status": "accepted"},
+        )
+
+        await async_client.memory.ingest(
+            messages=[{"role": "user", "content": "text only"}],
+            session_id="s1",
+        )
+
+        request = route.calls.last.request
+        assert request.headers["content-type"].startswith("multipart/form-data")
+
+    @pytest.mark.asyncio
     async def test_ingest_memory_with_blobs(self, async_client, mock_http, mock_resolve):
         """POST /memory with file blobs (multipart)."""
         mock_http.post("/v1/projects/p1/memory").respond(
