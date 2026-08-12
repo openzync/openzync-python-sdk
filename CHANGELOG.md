@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 - **BREAKING:** `AsyncUsersClient.create`, `AsyncUsersClient.update`, and
   `AsyncUsersClient.delete` now require an **org-admin credential** (a JWT
   dashboard session for a user with the `admin` role).  Project-scoped API
-  keys — and any non-admin credential — receive `403 Forbidden` on these
+  keys — and any non-admin credential — receive `401 Unauthorized` on these
   endpoints.  Read-only user endpoints (`list`, `get`) are unaffected.
 
 ## [0.4.0] - 2026-07-04
