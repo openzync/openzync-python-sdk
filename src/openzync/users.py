@@ -30,6 +30,10 @@ class AsyncUsersClient:
     ) -> UserResponse:
         """Create a new user.
 
+        .. warning::
+            Requires an **org-admin credential** (JWT dashboard session).
+            Project-scoped API keys are rejected with ``403 Forbidden``.
+
         Args:
             external_id: Caller-defined user identifier.
             name: Optional display name.
@@ -38,6 +42,9 @@ class AsyncUsersClient:
 
         Returns:
             ``UserResponse`` with the created user.
+
+        Raises:
+            OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
         body = UserCreateRequest(
             external_id=external_id,
@@ -73,6 +80,10 @@ class AsyncUsersClient:
     ) -> UserResponse:
         """Update user fields.
 
+        .. warning::
+            Requires an **org-admin credential** (JWT dashboard session).
+            Project-scoped API keys are rejected with ``403 Forbidden``.
+
         Args:
             user_id: The internal UUID of the user.
             name: Optional new display name.
@@ -81,6 +92,9 @@ class AsyncUsersClient:
 
         Returns:
             ``UserResponse`` with updated fields.
+
+        Raises:
+            OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
         body = UserUpdateRequest(name=name, email=email, metadata=metadata)
         data = await self._http.request(
@@ -93,8 +107,15 @@ class AsyncUsersClient:
     async def delete(self, user_id: str) -> None:
         """Soft-delete a user.
 
+        .. warning::
+            Requires an **org-admin credential** (JWT dashboard session).
+            Project-scoped API keys are rejected with ``403 Forbidden``.
+
         Args:
             user_id: The internal UUID of the user.
+
+        Raises:
+            OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
         await self._http.request("DELETE", f"/v1/users/{user_id}")
 

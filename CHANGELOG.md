@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### BREAKING
+- **BREAKING:** `AsyncUsersClient.create`, `AsyncUsersClient.update`, and
+  `AsyncUsersClient.delete` now require an **org-admin credential** (a JWT
+  dashboard session for a user with the `admin` role).  Project-scoped API
+  keys — and any non-admin credential — receive `403 Forbidden` on these
+  endpoints.  Read-only user endpoints (`list`, `get`) are unaffected.
+
 ## [0.4.0] - 2026-07-04
 ### Changed
 - **Changed:** Renamed API class `OpenZync` to `OpenZync`, `AsyncOpenZync` to `AsyncOpenZync`, `OpenZyncError` to `OpenZyncError` for consistency with the renamed product.
