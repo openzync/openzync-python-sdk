@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### BREAKING
+- **BREAKING:** API key `scopes` field renamed to `permissions` (same
+  permission vocabulary as users). Key defaults changed from `['read','write']`
+  to `['project:read','project:write']`.
+- **BREAKING:** `AsyncUsersClient.create` and `AsyncUsersClient.update` now
+  accept an optional `permissions` argument, and `UserResponse` now carries the
+  user's effective `permissions` list (empty array = full access / admin).
+  Omitting `permissions` on create/update leaves the backend defaults in place.
 - **BREAKING:** `AsyncUsersClient.create`, `AsyncUsersClient.update`, and
   `AsyncUsersClient.delete` now require an **org-admin credential** (a JWT
   dashboard session for a user with the `admin` role).  Project-scoped API

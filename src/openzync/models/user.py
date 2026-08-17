@@ -15,6 +15,10 @@ class UserCreateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    permissions: list[str] | None = Field(
+        default=None,
+        description="Explicit permission grants. Omit to receive the backend member defaults.",
+    )
 
 
 class UserUpdateRequest(BaseModel):
@@ -23,6 +27,10 @@ class UserUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     metadata: dict[str, Any] | None = Field(default=None)
+    permissions: list[str] | None = Field(
+        default=None,
+        description="Explicit permission grants. Omit to leave unchanged.",
+    )
 
 
 class UserResponse(BaseModel):
@@ -40,6 +48,10 @@ class UserResponse(BaseModel):
     message_count: int = Field(default=0)
     fact_count: int = Field(default=0)
     session_count: int = Field(default=0)
+    permissions: list[str] = Field(
+        ...,
+        description="Effective permission grants. Empty array = full access (admin).",
+    )
 
 
 class UserListResponse(BaseModel):

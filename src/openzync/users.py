@@ -27,6 +27,7 @@ class AsyncUsersClient:
         name: str | None = None,
         email: str | None = None,
         metadata: dict | None = None,
+        permissions: list[str] | None = None,
     ) -> UserResponse:
         """Create a new user.
 
@@ -39,6 +40,8 @@ class AsyncUsersClient:
             name: Optional display name.
             email: Optional email address.
             metadata: Optional metadata dict.
+            permissions: Optional explicit permission grants. Omit to receive
+                the backend member defaults.
 
         Returns:
             ``UserResponse`` with the created user.
@@ -51,6 +54,7 @@ class AsyncUsersClient:
             name=name,
             email=email,
             metadata=metadata if metadata is not None else {},
+            permissions=permissions,
         )
         data = await self._http.request(
             "POST",
@@ -77,6 +81,7 @@ class AsyncUsersClient:
         name: str | None = None,
         email: str | None = None,
         metadata: dict | None = None,
+        permissions: list[str] | None = None,
     ) -> UserResponse:
         """Update user fields.
 
@@ -89,6 +94,8 @@ class AsyncUsersClient:
             name: Optional new display name.
             email: Optional new email.
             metadata: Optional new metadata dict.
+            permissions: Optional explicit permission grants. Omit to leave
+                unchanged.
 
         Returns:
             ``UserResponse`` with updated fields.
@@ -96,7 +103,7 @@ class AsyncUsersClient:
         Raises:
             OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
-        body = UserUpdateRequest(name=name, email=email, metadata=metadata)
+        body = UserUpdateRequest(name=name, email=email, metadata=metadata, permissions=permissions)
         data = await self._http.request(
             "PATCH",
             f"/v1/users/{user_id}",

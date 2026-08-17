@@ -103,6 +103,7 @@ class TestHTTPRetry:
                 "updated_at": "2026-01-01T00:00:00Z",
                 "is_deleted": False,
                 "message_count": 0, "fact_count": 0, "session_count": 0,
+                "permissions": ["project:read", "project:write"],
             })
 
         mock_http.get("/v1/users/u1").side_effect = handler
