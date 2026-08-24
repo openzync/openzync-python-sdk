@@ -11,18 +11,32 @@ class TestGraphClient:
     @pytest.mark.asyncio
     async def test_list_nodes(self, async_client, mock_http, mock_resolve):
         """GET /graph/nodes returns paginated entities."""
-        mock_http.get("/v1/projects/p1/graph/nodes").respond(json={
-            "data": {
-                "items": [
-                    {"id": "n1", "name": "Alice", "type": "Person", "summary": "",
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                    {"id": "n2", "name": "Acme Corp", "type": "Organization", "summary": "",
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                ],
-                "next_cursor": None,
-                "has_more": False,
+        mock_http.get("/v1/projects/p1/graph/nodes").respond(
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "id": "n1",
+                            "name": "Alice",
+                            "type": "Person",
+                            "summary": "",
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                        {
+                            "id": "n2",
+                            "name": "Acme Corp",
+                            "type": "Organization",
+                            "summary": "",
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                    ],
+                    "next_cursor": None,
+                    "has_more": False,
+                }
             }
-        })
+        )
 
         nodes = []
         async for node in await async_client.graph.nodes():
@@ -33,20 +47,28 @@ class TestGraphClient:
         assert nodes[1].type == "Organization"
 
     @pytest.mark.asyncio
-    async def test_list_nodes_with_type_filter(self, async_client, mock_http, mock_resolve):
+    async def test_list_nodes_with_type_filter(
+        self, async_client, mock_http, mock_resolve
+    ):
         """GET /graph/nodes passes entity_type filter."""
-        mock_http.get(
-            "/v1/projects/p1/graph/nodes"
-        ).respond(json={
-            "data": {
-                "items": [
-                    {"id": "n1", "name": "Alice", "type": "Person", "summary": "",
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                ],
-                "next_cursor": None,
-                "has_more": False,
+        mock_http.get("/v1/projects/p1/graph/nodes").respond(
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "id": "n1",
+                            "name": "Alice",
+                            "type": "Person",
+                            "summary": "",
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                    ],
+                    "next_cursor": None,
+                    "has_more": False,
+                }
             }
-        })
+        )
 
         nodes = []
         async for node in await async_client.graph.nodes(entity_type="Person"):
@@ -58,18 +80,31 @@ class TestGraphClient:
     @pytest.mark.asyncio
     async def test_node_detail(self, async_client, mock_http, mock_resolve):
         """GET /graph/nodes/{id} returns node with edges."""
-        mock_http.get("/v1/projects/p1/graph/nodes/n1").respond(json={
-            "data": {
-                "node": {"id": "n1", "name": "Alice", "type": "Person",
-                         "summary": "A person", "created_at": "2026-01-01T00:00:00Z",
-                         "metadata": {}},
-                "edges": [
-                    {"id": "e1", "source_id": "n1", "target_id": "n2",
-                     "type": "works_at", "weight": 1.0,
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                ],
+        mock_http.get("/v1/projects/p1/graph/nodes/n1").respond(
+            json={
+                "data": {
+                    "node": {
+                        "id": "n1",
+                        "name": "Alice",
+                        "type": "Person",
+                        "summary": "A person",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "metadata": {},
+                    },
+                    "edges": [
+                        {
+                            "id": "e1",
+                            "source_id": "n1",
+                            "target_id": "n2",
+                            "type": "works_at",
+                            "weight": 1.0,
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                    ],
+                }
             }
-        })
+        )
 
         detail = await async_client.graph.node_detail("n1")
         assert detail.node.name == "Alice"
@@ -88,17 +123,25 @@ class TestGraphClient:
     @pytest.mark.asyncio
     async def test_edges(self, async_client, mock_http, mock_resolve):
         """GET /graph/edges returns edges for a subject."""
-        mock_http.get("/v1/projects/p1/graph/edges").respond(json={
-            "data": {
-                "items": [
-                    {"id": "e1", "source_id": "n1", "target_id": "n2",
-                     "type": "works_at", "weight": 1.0,
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                ],
-                "next_cursor": None,
-                "has_more": False,
+        mock_http.get("/v1/projects/p1/graph/edges").respond(
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "id": "e1",
+                            "source_id": "n1",
+                            "target_id": "n2",
+                            "type": "works_at",
+                            "weight": 1.0,
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                    ],
+                    "next_cursor": None,
+                    "has_more": False,
+                }
             }
-        })
+        )
 
         edges = []
         async for edge in await async_client.graph.edges(subject_id="n1"):
@@ -108,19 +151,29 @@ class TestGraphClient:
         assert edges[0]["type"] == "works_at"
 
     @pytest.mark.asyncio
-    async def test_edges_with_predicate_filter(self, async_client, mock_http, mock_resolve):
+    async def test_edges_with_predicate_filter(
+        self, async_client, mock_http, mock_resolve
+    ):
         """GET /graph/edges passes predicate filter."""
-        mock_http.get("/v1/projects/p1/graph/edges").respond(json={
-            "data": {
-                "items": [
-                    {"id": "e1", "source_id": "n1", "target_id": "n2",
-                     "type": "works_at", "weight": 1.0,
-                     "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                ],
-                "next_cursor": None,
-                "has_more": False,
+        mock_http.get("/v1/projects/p1/graph/edges").respond(
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "id": "e1",
+                            "source_id": "n1",
+                            "target_id": "n2",
+                            "type": "works_at",
+                            "weight": 1.0,
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "metadata": {},
+                        },
+                    ],
+                    "next_cursor": None,
+                    "has_more": False,
+                }
             }
-        })
+        )
 
         edges = []
         async for edge in await async_client.graph.edges(
@@ -133,13 +186,20 @@ class TestGraphClient:
     @pytest.mark.asyncio
     async def test_communities(self, async_client, mock_http, mock_resolve):
         """GET /graph/communities returns communities."""
-        mock_http.get("/v1/projects/p1/graph/communities").respond(json={
-            "data": [
-                {"id": "c1", "name": "Community 1", "summary": "A community",
-                 "member_count": 3, "metadata": {},
-                 "created_at": "2026-01-01T00:00:00Z"},
-            ],
-        })
+        mock_http.get("/v1/projects/p1/graph/communities").respond(
+            json={
+                "data": [
+                    {
+                        "id": "c1",
+                        "name": "Community 1",
+                        "summary": "A community",
+                        "member_count": 3,
+                        "metadata": {},
+                        "created_at": "2026-01-01T00:00:00Z",
+                    },
+                ],
+            }
+        )
 
         communities = await async_client.graph.communities()
         assert len(communities) == 1
@@ -152,28 +212,44 @@ class TestGraphClient:
         from httpx import Response as HXResponse
 
         mock_http.get("/v1/projects/p1/graph/nodes").side_effect = [
-            HXResponse(200, json={
-                "data": {
-                    "items": [
-                        {"id": "n1", "name": "Alice", "type": "Person",
-                         "summary": "", "created_at": "2026-01-01T00:00:00Z",
-                         "metadata": {}},
-                    ],
-                    "next_cursor": "cursor-2",
-                    "has_more": True,
-                }
-            }),
-            HXResponse(200, json={
-                "data": {
-                    "items": [
-                        {"id": "n2", "name": "Bob", "type": "Person",
-                         "summary": "", "created_at": "2026-01-01T00:00:00Z",
-                         "metadata": {}},
-                    ],
-                    "next_cursor": None,
-                    "has_more": False,
-                }
-            }),
+            HXResponse(
+                200,
+                json={
+                    "data": {
+                        "items": [
+                            {
+                                "id": "n1",
+                                "name": "Alice",
+                                "type": "Person",
+                                "summary": "",
+                                "created_at": "2026-01-01T00:00:00Z",
+                                "metadata": {},
+                            },
+                        ],
+                        "next_cursor": "cursor-2",
+                        "has_more": True,
+                    }
+                },
+            ),
+            HXResponse(
+                200,
+                json={
+                    "data": {
+                        "items": [
+                            {
+                                "id": "n2",
+                                "name": "Bob",
+                                "type": "Person",
+                                "summary": "",
+                                "created_at": "2026-01-01T00:00:00Z",
+                                "metadata": {},
+                            },
+                        ],
+                        "next_cursor": None,
+                        "has_more": False,
+                    }
+                },
+            ),
         ]
 
         nodes = []
@@ -189,28 +265,46 @@ class TestGraphClient:
         from httpx import Response as HXResponse
 
         mock_http.get("/v1/projects/p1/graph/edges").side_effect = [
-            HXResponse(200, json={
-                "data": {
-                    "items": [
-                        {"id": "e1", "source_id": "n1", "target_id": "n2",
-                         "type": "works_at", "weight": 1.0,
-                         "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                    ],
-                    "next_cursor": "cursor-2",
-                    "has_more": True,
-                }
-            }),
-            HXResponse(200, json={
-                "data": {
-                    "items": [
-                        {"id": "e2", "source_id": "n1", "target_id": "n3",
-                         "type": "reports_to", "weight": 1.0,
-                         "created_at": "2026-01-01T00:00:00Z", "metadata": {}},
-                    ],
-                    "next_cursor": None,
-                    "has_more": False,
-                }
-            }),
+            HXResponse(
+                200,
+                json={
+                    "data": {
+                        "items": [
+                            {
+                                "id": "e1",
+                                "source_id": "n1",
+                                "target_id": "n2",
+                                "type": "works_at",
+                                "weight": 1.0,
+                                "created_at": "2026-01-01T00:00:00Z",
+                                "metadata": {},
+                            },
+                        ],
+                        "next_cursor": "cursor-2",
+                        "has_more": True,
+                    }
+                },
+            ),
+            HXResponse(
+                200,
+                json={
+                    "data": {
+                        "items": [
+                            {
+                                "id": "e2",
+                                "source_id": "n1",
+                                "target_id": "n3",
+                                "type": "reports_to",
+                                "weight": 1.0,
+                                "created_at": "2026-01-01T00:00:00Z",
+                                "metadata": {},
+                            },
+                        ],
+                        "next_cursor": None,
+                        "has_more": False,
+                    }
+                },
+            ),
         ]
 
         edges = []
@@ -221,15 +315,76 @@ class TestGraphClient:
     @pytest.mark.asyncio
     async def test_search(self, async_client, mock_http, mock_resolve):
         """GET /search returns results."""
-        mock_http.get("/v1/projects/p1/search").respond(json={
-            "query": "Alice",
-            "results": [
-                {"id": "e1", "content": "Alice works at Acme Corp", "score": 0.06,
-                 "rrf_score": 0.03, "role": "user", "created_at": "2026-01-01T00:00:00Z"},
-            ],
-            "total": 1,
-        })
+        mock_http.get("/v1/projects/p1/search").respond(
+            json={
+                "query": "Alice",
+                "results": [
+                    {
+                        "id": "e1",
+                        "content": "Alice works at Acme Corp",
+                        "score": 0.06,
+                        "rrf_score": 0.03,
+                        "role": "user",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    },
+                ],
+                "total": 1,
+            }
+        )
 
         results = await async_client.graph.search(query="Alice")
         assert len(results) == 1
         assert "Acme Corp" in results[0]["content"]
+
+
+class TestGraphEdgesBatch:
+    """Tests for graph.edges() subject_ids batch support."""
+
+    @pytest.mark.asyncio
+    async def test_edges_with_subject_ids_batch(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """GET /graph/edges passes subject_ids as query param."""
+        route = mock_http.get("/v1/projects/p1/graph/edges").respond(
+            json={
+                "data": {"items": [], "next_cursor": None, "has_more": False},
+            }
+        )
+
+        iterator = await async_client.graph.edges(
+            subject_ids="n1,n2,n3", predicate="works_at"
+        )
+        items = [item async for item in iterator]
+
+        request = route.calls.last.request
+        assert request.url.params["subject_ids"] == "n1,n2,n3"
+        assert "subject_id" not in request.url.params
+        assert request.url.params["predicate"] == "works_at"
+        assert items == []
+
+    @pytest.mark.asyncio
+    async def test_edges_single_subject_id_still_works(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """GET /graph/edges with single subject_id passes subject_id param."""
+        route = mock_http.get("/v1/projects/p1/graph/edges").respond(
+            json={
+                "data": {"items": [], "next_cursor": None, "has_more": False},
+            }
+        )
+
+        iterator = await async_client.graph.edges(subject_id="n1")
+        _ = [item async for item in iterator]
+
+        request = route.calls.last.request
+        assert request.url.params["subject_id"] == "n1"
+        assert "subject_ids" not in request.url.params
+
+    @pytest.mark.asyncio
+    async def test_edges_requires_exactly_one_subject_param(self, async_client):
+        """ValueError when neither or both of subject_id/subject_ids given."""
+        with pytest.raises(ValueError, match="Exactly one"):
+            await async_client.graph.edges()
+
+        with pytest.raises(ValueError, match="Exactly one"):
+            await async_client.graph.edges(subject_id="n1", subject_ids="n2,n3")

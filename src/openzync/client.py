@@ -17,11 +17,15 @@ import asyncio
 from typing import Any
 
 from openzync._http import AsyncHTTPTransport
+from openzync.classifications import AsyncClassificationsClient
 from openzync.facts import AsyncFactsClient
 from openzync.graph import AsyncGraphClient
 from openzync.memory import AsyncMemoryClient
+from openzync.observations import AsyncObservationsClient
 from openzync.projects import AsyncProjectsClient
+from openzync.search import AsyncSearchClient
 from openzync.sessions import AsyncSessionsClient
+from openzync.structured_extractions import AsyncStructuredExtractionsClient
 from openzync.users import AsyncUsersClient
 
 
@@ -58,6 +62,10 @@ class AsyncOpenZync:
         self.users = AsyncUsersClient(self._http)
         self.sessions = AsyncSessionsClient(self._http)
         self.projects = AsyncProjectsClient(self._http)
+        self.search = AsyncSearchClient(self._http)
+        self.observations = AsyncObservationsClient(self._http)
+        self.classifications = AsyncClassificationsClient(self._http)
+        self.structured_extractions = AsyncStructuredExtractionsClient(self._http)
 
     async def close(self) -> None:
         """Close the underlying HTTP connection pool."""
@@ -100,6 +108,12 @@ class OpenZync:
         self.users = _SyncDomainWrapper(self._async.users)
         self.sessions = _SyncDomainWrapper(self._async.sessions)
         self.projects = _SyncDomainWrapper(self._async.projects)
+        self.search = _SyncDomainWrapper(self._async.search)
+        self.observations = _SyncDomainWrapper(self._async.observations)
+        self.classifications = _SyncDomainWrapper(self._async.classifications)
+        self.structured_extractions = _SyncDomainWrapper(
+            self._async.structured_extractions
+        )
 
     def close(self) -> None:
         """Close the underlying HTTP connection pool."""
@@ -116,8 +130,10 @@ class _SyncDomainWrapper:
         attr = getattr(self._async, name)
 
         if asyncio.iscoroutinefunction(attr):
+
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 return asyncio.run(attr(*args, **kwargs))
+
             return sync_wrapper
 
         return attr

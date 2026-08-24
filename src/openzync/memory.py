@@ -62,9 +62,7 @@ class AsyncMemoryClient:
 
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None
         if blobs:
-            files = [
-                ("blobs", (name, data, mime)) for name, data, mime in blobs
-            ]
+            files = [("blobs", (name, data, mime)) for name, data, mime in blobs]
 
         # Always multipart — the backend accepts only multipart/form-data,
         # even for text-only calls. With no blobs the transport sends a
@@ -83,21 +81,34 @@ class AsyncMemoryClient:
         self,
         query: str,
         limit: int = 20,
+        as_of: str | None = None,
+        format: str = "text",
     ) -> ContextResponse:
         """Assemble a context block for LLM injection.
 
         Args:
             query: Natural-language query describing the context needed.
             limit: Maximum results per source type.
+            as_of: Optional effective-at timestamp (ISO-8601) — facts valid
+                at this instant are used instead of "now".
+            format: Output format — ``"text"`` (plain text) or ``"json"``
+                (JSON-serialised context string).
 
         Returns:
             ``ContextResponse`` with formatted context text.
         """
         pid = await self._http.resolve_project_id()
+        params: dict[str, str | int] = {
+            "query": query,
+            "limit": str(limit),
+            "format": format,
+        }
+        if as_of is not None:
+            params["as_of"] = as_of
         data = await self._http.request(
             "GET",
             f"/v1/projects/{pid}/context",
-            params={"query": query, "limit": str(limit)},
+            params=params,
         )
         return ContextResponse(**data)
 

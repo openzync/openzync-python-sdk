@@ -22,9 +22,7 @@ class TestMemoryClient:
             "status": "accepted",
             "message": "Messages accepted for processing",
         }
-        mock_http.post("/v1/projects/p1/memory").respond(
-            status_code=202, json=expected
-        )
+        mock_http.post("/v1/projects/p1/memory").respond(status_code=202, json=expected)
 
         messages = [
             Message(role="user", content="Hello"),
@@ -38,10 +36,13 @@ class TestMemoryClient:
         assert result.status == "accepted"
 
     @pytest.mark.asyncio
-    async def test_ingest_memory_with_session(self, async_client, mock_http, mock_resolve):
+    async def test_ingest_memory_with_session(
+        self, async_client, mock_http, mock_resolve
+    ):
         """POST /memory with session_id."""
         mock_http.post("/v1/projects/p1/memory").respond(
-            status_code=202, json={"job_id": "j1", "episode_count": 1, "status": "accepted"}
+            status_code=202,
+            json={"job_id": "j1", "episode_count": 1, "status": "accepted"},
         )
 
         result = await async_client.memory.ingest(
@@ -51,11 +52,14 @@ class TestMemoryClient:
         assert result.episode_count == 1
 
     @pytest.mark.asyncio
-    async def test_ingest_memory_with_idempotency_key(self, async_client, mock_http, mock_resolve):
+    async def test_ingest_memory_with_idempotency_key(
+        self, async_client, mock_http, mock_resolve
+    ):
         """POST /memory sends the Idempotency-Key header on the wire."""
         route = mock_http.post("/v1/projects/p1/memory")
         route.respond(
-            status_code=202, json={"job_id": "j1", "episode_count": 1, "status": "accepted"}
+            status_code=202,
+            json={"job_id": "j1", "episode_count": 1, "status": "accepted"},
         )
 
         result = await async_client.memory.ingest(
@@ -93,11 +97,18 @@ class TestMemoryClient:
         assert request.headers["content-type"].startswith("multipart/form-data")
 
     @pytest.mark.asyncio
-    async def test_ingest_memory_with_blobs(self, async_client, mock_http, mock_resolve):
+    async def test_ingest_memory_with_blobs(
+        self, async_client, mock_http, mock_resolve
+    ):
         """POST /memory with file blobs (multipart)."""
         mock_http.post("/v1/projects/p1/memory").respond(
             status_code=202,
-            json={"job_id": "j2", "episode_count": 1, "blob_count": 1, "status": "accepted"},
+            json={
+                "job_id": "j2",
+                "episode_count": 1,
+                "blob_count": 1,
+                "status": "accepted",
+            },
         )
 
         result = await async_client.memory.ingest(
@@ -117,9 +128,7 @@ class TestMemoryClient:
         }
         mock_http.get("/v1/projects/p1/context").respond(json=expected)
 
-        result = await async_client.memory.get_context(
-            query="hello", limit=10
-        )
+        result = await async_client.memory.get_context(query="hello", limit=10)
         assert "Hello world" in result.context
         assert result.metadata["assembly_time_ms"] == 5.0
 
@@ -132,7 +141,9 @@ class TestMemoryClient:
         # No exception means success
 
     @pytest.mark.asyncio
-    async def test_ingest_memory_validation_error(self, async_client, mock_http, mock_resolve):
+    async def test_ingest_memory_validation_error(
+        self, async_client, mock_http, mock_resolve
+    ):
         """POST /memory with invalid data raises error."""
         mock_http.post("/v1/projects/p1/memory").respond(
             status_code=422,
@@ -141,3 +152,41 @@ class TestMemoryClient:
 
         with pytest.raises(Exception):
             await async_client.memory.ingest(messages=[], session_id="s1")
+
+    @pytest.mark.asyncio
+    async def test_get_context_with_as_of_and_format(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """GET /context passes as_of and format passthrough params."""
+        route = mock_http.get("/v1/projects/p1/context").respond(
+            json={
+                "context": "{}",
+                "metadata": {"assembly_time_ms": 1.0},
+            }
+        )
+
+        await async_client.memory.get_context(
+            query="hello", as_of="2026-01-01T00:00:00Z", format="json"
+        )
+
+        request = route.calls.last.request
+        assert request.url.params["as_of"] == "2026-01-01T00:00:00Z"
+        assert request.url.params["format"] == "json"
+
+    @pytest.mark.asyncio
+    async def test_get_context_defaults_omit_as_of(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """GET /context omits as_of when not provided; defaults format=text."""
+        route = mock_http.get("/v1/projects/p1/context").respond(
+            json={
+                "context": "text",
+                "metadata": {},
+            }
+        )
+
+        await async_client.memory.get_context(query="hello")
+
+        request = route.calls.last.request
+        assert "as_of" not in request.url.params
+        assert request.url.params["format"] == "text"

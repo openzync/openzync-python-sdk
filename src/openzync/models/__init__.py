@@ -11,6 +11,10 @@ from openzync.models.facts import (
     FactTriple,
     FactBatchRequest,
     FactBatchResponse,
+    FactResponse,
+    FactHistoryEvent,
+    FactHistoryResponse,
+    PaginatedFactsResponse,
 )
 from openzync.models.graph import (
     GraphNode,
@@ -32,6 +36,19 @@ from openzync.models.session import (
     SessionListResponse,
     SessionMessagesResponse,
 )
+from openzync.models.search import GlobalSearchItem, GlobalSearchResponse
+from openzync.models.observation import (
+    ObservationResponse,
+    ObservationListResponse,
+)
+from openzync.models.classification import (
+    ClassificationResponse,
+    ClassificationListResponse,
+)
+from openzync.models.extraction import (
+    StructuredExtractionResponse,
+    StructuredExtractionListResponse,
+)
 
 __all__ = [
     "BlobMetadata",
@@ -42,6 +59,10 @@ __all__ = [
     "FactTriple",
     "FactBatchRequest",
     "FactBatchResponse",
+    "FactResponse",
+    "FactHistoryEvent",
+    "FactHistoryResponse",
+    "PaginatedFactsResponse",
     "GraphNode",
     "GraphEdge",
     "GraphNodeDetail",
@@ -56,4 +77,12 @@ __all__ = [
     "SessionResponse",
     "SessionListResponse",
     "SessionMessagesResponse",
+    "GlobalSearchItem",
+    "GlobalSearchResponse",
+    "ObservationResponse",
+    "ObservationListResponse",
+    "ClassificationResponse",
+    "ClassificationListResponse",
+    "StructuredExtractionResponse",
+    "StructuredExtractionListResponse",
 ]

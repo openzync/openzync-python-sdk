@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from openzync._http import AsyncHTTPTransport
-from openzync._pagination import AsyncPaginatedIterator
+from openzync.models.facts import PaginatedFactsResponse
 from openzync.models.session import (
     SessionCreateRequest,
     SessionMessagesResponse,
@@ -36,7 +36,9 @@ class AsyncSessionsClient:
             ``SessionResponse`` with the created session.
         """
         pid = await self._http.resolve_project_id()
-        body = SessionCreateRequest(external_id=external_id, metadata=metadata if metadata is not None else {})
+        body = SessionCreateRequest(
+            external_id=external_id, metadata=metadata if metadata is not None else {}
+        )
         data = await self._http.request(
             "POST",
             f"/v1/projects/{pid}/sessions",
@@ -127,3 +129,33 @@ class AsyncSessionsClient:
             params=params,
         )
         return SessionMessagesResponse(**data)
+
+    async def facts(
+        self,
+        session_id: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> PaginatedFactsResponse:
+        """Get facts extracted from messages in a session (newest first).
+
+        Only non-invalidated facts are included.
+
+        Args:
+            session_id: The internal UUID of the session.
+            limit: Maximum facts per page (1–200).
+            cursor: Opaque cursor from a previous response.
+
+        Returns:
+            ``PaginatedFactsResponse`` with facts, next cursor, and has_more.
+        """
+        pid = await self._http.resolve_project_id()
+        params: dict[str, str | int] = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        data = await self._http.request(
+            "GET",
+            f"/v1/projects/{pid}/sessions/{session_id}/facts",
+            params=params,
+        )
+        return PaginatedFactsResponse(**data)

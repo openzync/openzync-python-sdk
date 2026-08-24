@@ -92,7 +92,7 @@ class AsyncProjectsClient:
             is_archived=is_archived,
         )
         data = await self._http.request(
-            "PUT",
+            "PATCH",
             f"/v1/projects/{pid}",
             json_body=body.model_dump(exclude_none=True),
         )
@@ -134,14 +134,14 @@ class AsyncProjectsClient:
             async for project in client.projects.list_iter():
                 print(project["name"])
         """
+
         async def fetch_page(cursor: str | None = None) -> dict:
             return await self.list(limit=limit, cursor=cursor)
 
         return AsyncPaginatedIterator(fetch_page, limit)
 
     async def archive(self) -> None:
-        """Archive (soft-delete) a project.
-        """
+        """Archive (soft-delete) a project."""
         pid = await self._http.resolve_project_id()
         await self._http.request(
             "DELETE",
@@ -182,6 +182,31 @@ class AsyncProjectsClient:
             "DELETE",
             f"/v1/projects/{pid}/members/{user_id}",
         )
+
+    async def update_member(
+        self,
+        user_id: str,
+        role: str = "member",
+    ) -> ProjectMemberResponse:
+        """Change a member's role within a project.
+
+        Args:
+            user_id: The UUID of the user whose role to change.
+            role: New project role (``"owner"`` or ``"member"``).
+
+        Returns:
+            ``ProjectMemberResponse`` with the updated membership.
+
+        Raises:
+            openzync._errors.NotFoundError: If the member does not exist.
+        """
+        pid = await self._http.resolve_project_id()
+        data = await self._http.request(
+            "PATCH",
+            f"/v1/projects/{pid}/members/{user_id}",
+            params={"role": role},
+        )
+        return ProjectMemberResponse(**data)
 
     async def list_members(
         self,

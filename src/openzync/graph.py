@@ -97,22 +97,38 @@ class AsyncGraphClient:
 
     async def edges(
         self,
-        subject_id: str,
+        subject_id: str | None = None,
         *,
+        subject_ids: str | None = None,
         predicate: str | None = None,
         limit: int = 50,
     ) -> AsyncPaginatedIterator:
-        """List relationship edges for a specific entity.
+        """List relationship edges for one entity or a batch of entities.
+
+        Exactly one of ``subject_id`` / ``subject_ids`` must be provided.
 
         Args:
-            subject_id: The UUID of the source entity.
+            subject_id: The UUID of the source entity (single-entity listing).
+            subject_ids: Comma-separated UUIDs of entities (batch fetching).
             predicate: Optional relationship type filter.
             limit: Maximum results per page.
+
+        Raises:
+            ValueError: If not exactly one of ``subject_id``/``subject_ids``
+                is provided.
         """
+        if (subject_id is None) == (subject_ids is None):
+            raise ValueError(
+                "Exactly one of 'subject_id' or 'subject_ids' is required."
+            )
         pid = await self._http.resolve_project_id()
 
         async def fetch_page(cursor: str | None = None) -> dict:
-            params: dict[str, str | int] = {"subject_id": subject_id, "limit": limit}
+            params: dict[str, str | int] = {"limit": limit}
+            if subject_id is not None:
+                params["subject_id"] = subject_id
+            else:
+                params["subject_ids"] = subject_ids
             if predicate is not None:
                 params["predicate"] = predicate
             if cursor is not None:
@@ -134,8 +150,7 @@ class AsyncGraphClient:
     async def communities(
         self,
     ) -> list[GraphCommunity]:
-        """List community summary nodes.
-        """
+        """List community summary nodes."""
         pid = await self._http.resolve_project_id()
         data = await self._http.request(
             "GET",
