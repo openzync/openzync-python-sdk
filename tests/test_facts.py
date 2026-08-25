@@ -145,7 +145,8 @@ class TestFactsListRetractHistory:
         await async_client.facts.retract("f1")
 
         request = route.calls.last.request
-        assert request.read() in (b"", b"null")
+        # httpx drops json=None entirely — the retract POST carries no body.
+        assert request.read() == b""
 
     @pytest.mark.asyncio
     async def test_fact_history(self, async_client, mock_http, mock_resolve):
