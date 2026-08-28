@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0b5] - 2026-08-28
+
 ### BREAKING
 - **BREAKING:** API key `scopes` field renamed to `permissions` (same
   permission vocabulary as users). Key defaults changed from `['read','write']`
@@ -17,6 +19,9 @@ All notable changes to this project will be documented in this file.
   dashboard session for a user with the `admin` role).  Project-scoped API
   keys — and any non-admin credential — receive `401 Unauthorized` on these
   endpoints.  Read-only user endpoints (`list`, `get`) are unaffected.
+
+### Added
+- Classifications, observations, search, and structured extractions clients.
 
 ## [0.4.0] - 2026-07-04
 ### Changed
