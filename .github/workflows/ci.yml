@@ -21,7 +21,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    branches: [master]
+    branches: [master, main]
   workflow_dispatch:
 
 jobs:
@@ -47,11 +47,64 @@ jobs:
         run: pytest tests/ -v
 
   # ═════════════════════════════════════════════════════════════════════════════
+  # CHANGELOG CHECK  (PRs only — requires fragment or trivial/skip-changelog label)
+  # ═════════════════════════════════════════════════════════════════════════════
+  changelog-check:
+    name: Check changelog fragment
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'trivial') && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install towncrier
+        run: pip install towncrier>=24
+      - name: Check changelog fragment
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1 || true
+          towncrier check --compare-with origin/${{ github.base_ref }} --config pyproject.toml
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # CHANGELOG  (tags only — builds CHANGELOG.md and pushes commit)
+  # ═════════════════════════════════════════════════════════════════════════════
+  changelog:
+    name: Build changelog
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install towncrier
+        run: pip install towncrier>=24
+      - name: Build changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          towncrier build --version "$VERSION" --yes --config pyproject.toml
+      - name: Commit changelog
+        run: |
+          git config user.email "ci@openzync.tech"
+          git config user.name "CI"
+          git add CHANGELOG.md changelog.d
+          git commit -m "chore(changelog): release ${GITHUB_REF_NAME#v} [skip ci]" || true
+          git push || true
+
+  # ═════════════════════════════════════════════════════════════════════════════
   # BUILD  (tags only)
   # ═════════════════════════════════════════════════════════════════════════════
   build:
     name: Build distribution
-    needs: [test]
+    needs: [changelog]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

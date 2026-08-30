@@ -36,6 +36,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "respx>=0.22.0",
     "langchain-core>=0.3.0,<0.4.0",
+    "towncrier>=24",
 ]
 langchain = [
     "langchain-core>=0.3.0,<0.4.0",
@@ -48,7 +49,7 @@ Changelog = "https://github.com/rohnsha0/openzync/blob/master/oss/sdk-python/CHA
 
 [tool.hatch.version]
 source = "vcs"
-fallback-version = "0.3.0"
+fallback-version = "1.0.0b5"
 raw-options = { search_parent_directories = true, local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.sdist]
@@ -60,3 +61,52 @@ packages = ["src/openzync"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+template = "changelog.d/template.j2"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## [{version}] - {project_date}"
+underlines = ["", "", ""]
+orphan_prefix = "trivial"
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking Changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "change"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Docs"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "internal"
+name = "Internal"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = false
