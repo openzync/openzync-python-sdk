@@ -8,7 +8,7 @@ past episodes, facts, and entities.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever

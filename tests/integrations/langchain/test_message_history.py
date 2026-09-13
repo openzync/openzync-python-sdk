@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from openzync._errors import NotFoundError
 from openzync.client import AsyncOpenZync

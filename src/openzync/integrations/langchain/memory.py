@@ -12,7 +12,6 @@ from typing import Any
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.memory import BaseMemory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from pydantic import BaseModel, Field
 
 from openzync.integrations.langchain.message_history import OZChatMessageHistory
 from openzync.models.memory import ContextResponse

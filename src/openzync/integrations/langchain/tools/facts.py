@@ -7,7 +7,7 @@ system — adding structured fact triples to a project's knowledge graph.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Type
+from typing import Any, List, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field

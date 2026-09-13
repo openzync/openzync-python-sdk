@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
 import respx
-from httpx import AsyncClient, Response
+from httpx import Response
 
 from openzync.client import AsyncOpenZync, OpenZync
 
@@ -60,7 +60,7 @@ def mock_response(data: dict, status: int = 200) -> Response:
 def mock_error_response(status: int, detail: str, **extra: str) -> Response:
     """Create a mock RFC 7807 error response."""
     body = {
-        "type": f"https://errors.openzync.tech/error",
+        "type": "https://errors.openzync.tech/error",
         "title": "Error",
         "status": status,
         "detail": detail,

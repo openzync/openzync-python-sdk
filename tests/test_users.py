@@ -6,7 +6,6 @@ import json
 
 import pytest
 
-from tests.conftest import mock_response
 
 
 class TestUsersClient:

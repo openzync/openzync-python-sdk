@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from openzync.models.facts import FactBatchResponse, FactResponse, FactTriple
-from tests.conftest import mock_response
 
 
 class TestFactsClient:
