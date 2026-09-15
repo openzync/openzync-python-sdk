@@ -139,9 +139,7 @@ class GraphNodeDetailTool(BaseTool):
             "Relationships:",
         ]
         for edge in detail.edges:
-            lines.append(
-                f"  - {edge.source_id} --[{edge.type}]--> {edge.target_id}"
-            )
+            lines.append(f"  - {edge.source_id} --[{edge.type}]--> {edge.target_id}")
         return "\n".join(lines)
 
 

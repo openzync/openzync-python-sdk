@@ -125,7 +125,10 @@ class AsyncHTTPTransport:
                     status_code=504,
                 ) from exc
 
-            if response.status_code in RETRYABLE_STATUSES and attempt < self._max_retries:
+            if (
+                response.status_code in RETRYABLE_STATUSES
+                and attempt < self._max_retries
+            ):
                 logger.info(
                     "http.retry",
                     extra={
@@ -238,10 +241,17 @@ class AsyncHTTPTransport:
                     status_code=504,
                 ) from exc
 
-            if response.status_code in RETRYABLE_STATUSES and attempt < self._max_retries:
+            if (
+                response.status_code in RETRYABLE_STATUSES
+                and attempt < self._max_retries
+            ):
                 logger.info(
                     "http.multipart_retry",
-                    extra={"url": url, "status": response.status_code, "attempt": attempt},
+                    extra={
+                        "url": url,
+                        "status": response.status_code,
+                        "attempt": attempt,
+                    },
                 )
                 await self._wait(attempt)
                 continue
@@ -274,7 +284,7 @@ class AsyncHTTPTransport:
 
     async def _wait(self, attempt: int) -> None:
         """Exponential backoff sleep."""
-        delay = BASE_DELAY * (2 ** attempt)
+        delay = BASE_DELAY * (2**attempt)
         await asyncio.sleep(delay)
 
     async def resolve_project_id(self) -> str:

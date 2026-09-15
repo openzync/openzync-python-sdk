@@ -138,8 +138,13 @@ class TestOZGraphRetriever:
     def test_result_with_name_fallback(self, mock_client):
         """When content is empty, falls back to name."""
         mock_client.graph.search.return_value = [
-            {"content": "", "score": 0.9, "type": "entity",
-             "name": "Fallback Name", "node_id": "n1"},
+            {
+                "content": "",
+                "score": 0.9,
+                "type": "entity",
+                "name": "Fallback Name",
+                "node_id": "n1",
+            },
         ]
 
         retriever = OZGraphRetriever(

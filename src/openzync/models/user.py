@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 class UserCreateRequest(BaseModel):
     """Request body for ``POST /v1/users``."""
 
-    external_id: str = Field(..., min_length=1, max_length=255, description="Caller-defined user identifier.")
+    external_id: str = Field(
+        ..., min_length=1, max_length=255, description="Caller-defined user identifier."
+    )
     name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -57,5 +59,7 @@ class UserListResponse(BaseModel):
     """Response from ``GET /v1/users``."""
 
     data: list[UserResponse] = Field(..., description="List of users.")
-    next_cursor: str | None = Field(default=None, description="Cursor for the next page.")
+    next_cursor: str | None = Field(
+        default=None, description="Cursor for the next page."
+    )
     has_more: bool = Field(default=False)

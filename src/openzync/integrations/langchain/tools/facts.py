@@ -37,7 +37,10 @@ class AddFactsInput(BaseModel):
     """Input schema for adding facts."""
 
     project_id: str = Field(..., description="OpenZync project UUID.")
-    session_id: str = Field(..., description="Session external ID — the fact triples are attributed to this session.")
+    session_id: str = Field(
+        ...,
+        description="Session external ID — the fact triples are attributed to this session.",
+    )
     facts: List[FactTripleInput] = Field(
         ..., min_length=1, max_length=500, description="Fact triples to add."
     )
@@ -60,9 +63,13 @@ class AddFactsTool(BaseTool):
     args_schema: Type[BaseModel] = AddFactsInput
     client: AsyncOpenZync
 
-    def _run(self, project_id: str, session_id: str, facts: list[dict[str, Any]]) -> str:
+    def _run(
+        self, project_id: str, session_id: str, facts: list[dict[str, Any]]
+    ) -> str:
         """Add facts (sync)."""
-        return _run_async(self._arun(project_id=project_id, session_id=session_id, facts=facts))
+        return _run_async(
+            self._arun(project_id=project_id, session_id=session_id, facts=facts)
+        )
 
     async def _arun(
         self, project_id: str, session_id: str, facts: list[dict[str, Any]]
@@ -82,10 +89,7 @@ class AddFactsTool(BaseTool):
             )
 
         result = await self.client.facts.add(normalized, session_id=session_id)
-        return (
-            f"Accepted {result.accepted_count} fact(s) "
-            f"(job_id: {result.job_id})."
-        )
+        return f"Accepted {result.accepted_count} fact(s) (job_id: {result.job_id})."
 
 
 def _run_async(coro: Any) -> Any:

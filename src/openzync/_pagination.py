@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 
-
 class AsyncPaginatedIterator:
     """Async iterator over paginated results.
 
@@ -73,6 +72,7 @@ class SyncPaginatedIterator:
         limit: int = 50,
     ) -> None:
         import asyncio
+
         self._async_iter = AsyncPaginatedIterator(fetch_page, limit)
         self._run = asyncio.run
 

@@ -155,7 +155,8 @@ class TestOZMemory:
         result = await memory.get_context(query="hello", limit=5)
 
         mock_client.memory.get_context.assert_awaited_once_with(
-            query="hello", limit=5,
+            query="hello",
+            limit=5,
         )
         assert result.context == "relevant context info"
 

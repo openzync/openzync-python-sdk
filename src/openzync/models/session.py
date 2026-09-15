@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 class SessionCreateRequest(BaseModel):
     """Request body for ``POST /v1/projects/{project_id}/sessions``."""
 
-    external_id: str = Field(..., min_length=1, max_length=255, description="Caller-defined session identifier.")
+    external_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Caller-defined session identifier.",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -32,7 +37,9 @@ class SessionListResponse(BaseModel):
     """Response from ``GET /v1/projects/{project_id}/sessions``."""
 
     data: list[SessionResponse] = Field(..., description="List of sessions.")
-    next_cursor: str | None = Field(default=None, description="Cursor for the next page.")
+    next_cursor: str | None = Field(
+        default=None, description="Cursor for the next page."
+    )
     has_more: bool = Field(default=False)
 
 

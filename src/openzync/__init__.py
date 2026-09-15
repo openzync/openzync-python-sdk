@@ -19,6 +19,7 @@ from openzync.client import AsyncOpenZync, OpenZync
 __all__ = [
     "AsyncOpenZync",
     "OpenZync",
+    "__version__",
 ]
 
 # LangChain integration classes live under openzync.integrations.langchain.

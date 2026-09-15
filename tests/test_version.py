@@ -28,6 +28,7 @@ class TestVersion:
 
         # Re-execute the try/except block
         import importlib
+
         importlib.reload(vz)
 
         assert vz.__version__ == "0.0.0"

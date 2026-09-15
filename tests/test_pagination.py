@@ -29,9 +29,15 @@ class TestAsyncPaginatedIterator:
     @pytest.mark.asyncio
     async def test_single_page(self):
         """Single page of results is iterated correctly."""
-        fetch = _make_fetch([
-            {"data": [{"id": 1}, {"id": 2}], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {
+                    "data": [{"id": 1}, {"id": 2}],
+                    "next_cursor": None,
+                    "has_more": False,
+                },
+            ]
+        )
         items = []
         async for item in AsyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -42,10 +48,12 @@ class TestAsyncPaginatedIterator:
     @pytest.mark.asyncio
     async def test_multi_page(self):
         """Multiple pages are auto-fetched."""
-        fetch = _make_fetch([
-            {"data": [{"id": 1}], "next_cursor": "cursor-2", "has_more": True},
-            {"data": [{"id": 2}], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [{"id": 1}], "next_cursor": "cursor-2", "has_more": True},
+                {"data": [{"id": 2}], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         async for item in AsyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -56,9 +64,11 @@ class TestAsyncPaginatedIterator:
     @pytest.mark.asyncio
     async def test_empty_results(self):
         """Empty page stops iteration immediately."""
-        fetch = _make_fetch([
-            {"data": [], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         async for item in AsyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -67,10 +77,12 @@ class TestAsyncPaginatedIterator:
     @pytest.mark.asyncio
     async def test_page_after_empty_fetch(self):
         """If fetch returns empty set, iteration stops."""
-        fetch = _make_fetch([
-            {"data": [{"id": 1}], "next_cursor": "cursor-2", "has_more": True},
-            {"data": [], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [{"id": 1}], "next_cursor": "cursor-2", "has_more": True},
+                {"data": [], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         async for item in AsyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -79,9 +91,11 @@ class TestAsyncPaginatedIterator:
     @pytest.mark.asyncio
     async def test_uses_items_key_fallback(self):
         """Falls back to 'items' key when 'data' is absent."""
-        fetch = _make_fetch([
-            {"items": [{"id": 1}], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"items": [{"id": 1}], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         async for item in AsyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -100,9 +114,11 @@ class TestSyncPaginatedIterator:
 
     def test_single_page(self):
         """Sync wrapper iterates a single page."""
-        fetch = _make_fetch([
-            {"data": [{"id": 1}], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [{"id": 1}], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         for item in SyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -110,10 +126,12 @@ class TestSyncPaginatedIterator:
 
     def test_multi_page(self):
         """Sync wrapper auto-fetches multiple pages."""
-        fetch = _make_fetch([
-            {"data": [{"id": 1}], "next_cursor": "c2", "has_more": True},
-            {"data": [{"id": 2}], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [{"id": 1}], "next_cursor": "c2", "has_more": True},
+                {"data": [{"id": 2}], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         for item in SyncPaginatedIterator(fetch, limit=50):
             items.append(item)
@@ -121,9 +139,11 @@ class TestSyncPaginatedIterator:
 
     def test_empty(self):
         """Sync wrapper handles empty results."""
-        fetch = _make_fetch([
-            {"data": [], "next_cursor": None, "has_more": False},
-        ])
+        fetch = _make_fetch(
+            [
+                {"data": [], "next_cursor": None, "has_more": False},
+            ]
+        )
         items = []
         for item in SyncPaginatedIterator(fetch, limit=50):
             items.append(item)

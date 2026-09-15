@@ -103,7 +103,9 @@ class AsyncUsersClient:
         Raises:
             OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
-        body = UserUpdateRequest(name=name, email=email, metadata=metadata, permissions=permissions)
+        body = UserUpdateRequest(
+            name=name, email=email, metadata=metadata, permissions=permissions
+        )
         data = await self._http.request(
             "PATCH",
             f"/v1/users/{user_id}",
@@ -154,6 +156,7 @@ class AsyncUsersClient:
             async for user in client.users.list_iter():
                 print(user["name"])
         """
+
         async def fetch_page(cursor: str | None = None) -> dict:
             return await self.list(limit=limit, cursor=cursor)
 

@@ -57,6 +57,7 @@ class TestSyncDomainWrapper:
 
     def test_getattr_non_async_returns_directly(self):
         """Non-coroutine attributes pass through unchanged."""
+
         class FakeAsync:
             greeting = "hello"
 
@@ -76,15 +77,24 @@ class TestSyncDomainWrapper:
         wrapper = _SyncDomainWrapper(async_client)
         assert wrapper._async is async_client
 
-    def test_sync_wrapper_executes_method(self, api_key, base_url, mock_http, mock_resolve):
+    def test_sync_wrapper_executes_method(
+        self, api_key, base_url, mock_http, mock_resolve
+    ):
         """Calling an async method through the sync wrapper executes it."""
-        mock_http.get("/v1/projects/p1/graph/communities").respond(json={
-            "data": [
-                {"id": "c1", "name": "Community 1", "summary": "",
-                 "member_count": 1, "metadata": {},
-                 "created_at": "2026-01-01T00:00:00Z"},
-            ],
-        })
+        mock_http.get("/v1/projects/p1/graph/communities").respond(
+            json={
+                "data": [
+                    {
+                        "id": "c1",
+                        "name": "Community 1",
+                        "summary": "",
+                        "member_count": 1,
+                        "metadata": {},
+                        "created_at": "2026-01-01T00:00:00Z",
+                    },
+                ],
+            }
+        )
 
         client = OpenZync(api_key=api_key, base_url=base_url)
         result = client.graph.communities()

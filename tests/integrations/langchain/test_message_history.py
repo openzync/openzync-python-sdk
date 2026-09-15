@@ -65,9 +65,7 @@ class TestOZChatMessageHistory:
     @pytest.mark.asyncio
     async def test_aget_messages_empty(self, mock_client):
         """Return empty list when no messages exist."""
-        mock_client.sessions.messages.side_effect = NotFoundError(
-            "Session not found"
-        )
+        mock_client.sessions.messages.side_effect = NotFoundError("Session not found")
 
         history = OZChatMessageHistory(
             session_id="session-1",
@@ -99,12 +97,8 @@ class TestOZChatMessageHistory:
     @pytest.mark.asyncio
     async def test_aadd_messages_persists_via_ingest(self, mock_client):
         """Add messages calls memory.ingest."""
-        mock_client.sessions.messages.side_effect = NotFoundError(
-            "Session not found"
-        )
-        mock_client.memory.ingest = AsyncMock(
-            return_value=AsyncMock(episode_count=1)
-        )
+        mock_client.sessions.messages.side_effect = NotFoundError("Session not found")
+        mock_client.memory.ingest = AsyncMock(return_value=AsyncMock(episode_count=1))
 
         history = OZChatMessageHistory(
             session_id="session-1",
@@ -121,9 +115,7 @@ class TestOZChatMessageHistory:
     @pytest.mark.asyncio
     async def test_aadd_messages_updates_cache(self, mock_client):
         """After adding, aget_messages returns the new messages."""
-        mock_client.sessions.messages.side_effect = NotFoundError(
-            "Session not found"
-        )
+        mock_client.sessions.messages.side_effect = NotFoundError("Session not found")
         mock_client.memory.ingest = AsyncMock()
 
         history = OZChatMessageHistory(
@@ -235,18 +227,22 @@ class TestOZChatMessageHistory:
             client=mock_client,
             max_messages=2,
         )
-        await history.aadd_messages([
-            HumanMessage(content="1"),
-            HumanMessage(content="2"),
-            HumanMessage(content="3"),
-        ])
+        await history.aadd_messages(
+            [
+                HumanMessage(content="1"),
+                HumanMessage(content="2"),
+                HumanMessage(content="3"),
+            ]
+        )
 
         # After truncation, only last 2 should be in the ingest call
         call = mock_client.memory.ingest.await_args
         assert call is not None
         ingested = call.kwargs["messages"]
-        assert ingested == [{"role": "user", "content": "2"},
-                            {"role": "user", "content": "3"}]
+        assert ingested == [
+            {"role": "user", "content": "2"},
+            {"role": "user", "content": "3"},
+        ]
 
     def test_sync_add_messages(self, mock_client):
         """Sync add_messages wraps async call."""

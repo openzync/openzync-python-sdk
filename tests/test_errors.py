@@ -87,7 +87,6 @@ class TestHTTPRetry:
     @pytest.mark.asyncio
     async def test_retry_on_429(self, async_client, mock_http):
         """429 status triggers retry, then succeeds."""
-        user_id = "u1"
         # First call returns 429, second returns 200
         call_count = 0
 
@@ -96,15 +95,22 @@ class TestHTTPRetry:
             call_count += 1
             if call_count == 1:
                 return Response(429, json={"detail": "Rate limited"})
-            return Response(200, json={
-                "id": "u1", "external_id": "alice", "name": "Alice",
-                "organization_id": "org-1",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-                "is_deleted": False,
-                "message_count": 0, "fact_count": 0, "session_count": 0,
-                "permissions": ["project:read", "project:write"],
-            })
+            return Response(
+                200,
+                json={
+                    "id": "u1",
+                    "external_id": "alice",
+                    "name": "Alice",
+                    "organization_id": "org-1",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "is_deleted": False,
+                    "message_count": 0,
+                    "fact_count": 0,
+                    "session_count": 0,
+                    "permissions": ["project:read", "project:write"],
+                },
+            )
 
         mock_http.get("/v1/users/u1").side_effect = handler
 

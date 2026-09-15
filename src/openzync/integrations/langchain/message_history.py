@@ -198,7 +198,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
 
         # Truncate to max_messages if needed
         if self._max_messages and len(messages) > self._max_messages:
-            messages = messages[-self._max_messages:]
+            messages = messages[-self._max_messages :]
 
         # Warm cache if cold
         if self._messages is None:
