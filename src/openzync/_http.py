@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ── Constants ──────────────────────────────────────────────────────────────
 
 RETRYABLE_STATUSES: set[int] = {429, 502, 503, 504}
-"""HTTP status codes that trigger automatic retry."""
+"""HTTP status codes that trigger automatic retry (idempotent methods only)."""
 
 MAX_RETRIES: int = 3
 """Maximum number of retry attempts before giving up."""
@@ -38,6 +38,20 @@ DEFAULT_TIMEOUT: float = 30.0
 # call.  ``_EMPTY_FILES`` is truthy yet iterates to zero parts, forcing
 # genuine multipart encoding with no file parts (a valid ``data``-only form).
 _EMPTY_FILES = iter(())
+
+
+def _has_idempotency_key(headers: dict[str, str] | None) -> bool:
+    """Check for an ``Idempotency-Key`` header (case-insensitive).
+
+    Args:
+        headers: Per-request headers (may be ``None``).
+
+    Returns:
+        ``True`` when an idempotency key is present, making POST safe to retry.
+    """
+    if not headers:
+        return False
+    return any(k.lower() == "idempotency-key" for k in headers)
 
 
 class AsyncHTTPTransport:
@@ -90,22 +104,37 @@ class AsyncHTTPTransport:
         path: str,
         json_body: dict | list | None = None,
         params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         """Make an HTTP request with retry and error mapping.
+
+        Retry policy: ``GET``/``PUT``/``PATCH``/``DELETE`` retry on
+        429/5xx and timeouts with exponential backoff. ``POST`` is only
+        retried when an ``Idempotency-Key`` header is present — without it
+        the request fails fast (mapped error, no retry) so a non-idempotent
+        write is never duplicated.
 
         Args:
             method: HTTP method (``GET``, ``POST``, ``PATCH``, ``DELETE``).
             path: URL path relative to base URL (e.g. ``/v1/users``).
             json_body: Optional JSON-serializable request body.
             params: Optional query parameters.
+            headers: Optional per-request headers (e.g. ``Idempotency-Key``,
+                which enables safe retry for ``POST``).
 
         Returns:
-            Parsed JSON response body.
+            Parsed JSON response body, or ``None`` for ``DELETE`` with
+            ``204 No Content`` (``DELETE`` is the only method typed to
+            return ``None``).
 
         Raises:
-            OpenZyncError: Mapped from the API's RFC 7807 error response.
+            OpenZyncError: Mapped from the API's RFC 7807 error response;
+                ``"empty response"`` when a body-expecting method receives
+                ``204``/empty 2xx; non-JSON 2xx details the status, a
+                200-char content preview, and the URL.
         """
         url = self._build_url(path)
+        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
         for attempt in range(self._max_retries + 1):
             try:
@@ -114,10 +143,11 @@ class AsyncHTTPTransport:
                     url=url,
                     json=json_body,
                     params=params,
+                    headers=headers,
                 )
             except httpx.TimeoutException as exc:
                 logger.warning("http.timeout", extra={"url": url, "attempt": attempt})
-                if attempt < self._max_retries:
+                if can_retry and attempt < self._max_retries:
                     await self._wait(attempt)
                     continue
                 raise OpenZyncError(
@@ -128,6 +158,7 @@ class AsyncHTTPTransport:
             if (
                 response.status_code in RETRYABLE_STATUSES
                 and attempt < self._max_retries
+                and can_retry
             ):
                 logger.info(
                     "http.retry",
@@ -140,9 +171,15 @@ class AsyncHTTPTransport:
                 await self._wait(attempt)
                 continue
 
-            # 204 No Content — no body to parse
+            # 204 No Content — only DELETE is typed to return None; any
+            # body-expecting method receiving 204 is a contract violation.
             if response.status_code == 204:
-                return None
+                if method.upper() == "DELETE":
+                    return None
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=204,
+                )
 
             if response.is_error:
                 try:
@@ -151,10 +188,30 @@ class AsyncHTTPTransport:
                     body = {"detail": response.text}
                 raise_on_error(response.status_code, body)
 
+            # DELETE is typed None — an empty 2xx body means "done".
+            if method.upper() == "DELETE" and not response.content:
+                return None
+            if not response.content:
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=response.status_code,
+                )
+
             try:
                 return response.json()
-            except Exception:
-                return {"_raw": response.text}
+            except Exception as exc:
+                raise OpenZyncError(
+                    message=(
+                        f"Expected JSON from {url} "
+                        f"(status {response.status_code}), "
+                        f"got non-JSON body: {response.text[:200]!r}"
+                    ),
+                    status_code=response.status_code,
+                    detail={
+                        "url": url,
+                        "content_preview": response.text[:200],
+                    },
+                ) from exc
 
         # Should not reach here, but safety net:
         raise OpenZyncError(
@@ -210,13 +267,20 @@ class AsyncHTTPTransport:
             params: Optional query parameters.
 
         Returns:
-            Parsed JSON response body.
+            Parsed JSON response body, or ``None`` for ``DELETE`` with
+            ``204 No Content`` (``DELETE`` is the only method typed to
+            return ``None``).
 
         Raises:
-            OpenZyncError: On HTTP errors (mapped from RFC 7807).
+            OpenZyncError: On HTTP errors (mapped from RFC 7807);
+                ``"empty response"`` when a body-expecting method receives
+                ``204``/empty 2xx; non-JSON 2xx details the status, a
+                200-char content preview, and the URL. ``POST`` without an
+                ``Idempotency-Key`` header is never retried — it fails fast.
             httpx.TimeoutException: On timeout after retries.
         """
         url = self._build_url(path)
+        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
         for attempt in range(self._max_retries + 1):
             try:
@@ -233,7 +297,7 @@ class AsyncHTTPTransport:
                     "http.multipart_timeout",
                     extra={"url": url, "attempt": attempt},
                 )
-                if attempt < self._max_retries:
+                if can_retry and attempt < self._max_retries:
                     await self._wait(attempt)
                     continue
                 raise OpenZyncError(
@@ -244,6 +308,7 @@ class AsyncHTTPTransport:
             if (
                 response.status_code in RETRYABLE_STATUSES
                 and attempt < self._max_retries
+                and can_retry
             ):
                 logger.info(
                     "http.multipart_retry",
@@ -256,8 +321,15 @@ class AsyncHTTPTransport:
                 await self._wait(attempt)
                 continue
 
+            # 204 No Content — only DELETE is typed to return None; any
+            # body-expecting method receiving 204 is a contract violation.
             if response.status_code == 204:
-                return None
+                if method.upper() == "DELETE":
+                    return None
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=204,
+                )
 
             if response.is_error:
                 try:
@@ -266,10 +338,30 @@ class AsyncHTTPTransport:
                     body = {"detail": response.text}
                 raise_on_error(response.status_code, body)
 
+            # DELETE is typed None — an empty 2xx body means "done".
+            if method.upper() == "DELETE" and not response.content:
+                return None
+            if not response.content:
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=response.status_code,
+                )
+
             try:
                 return response.json()
-            except Exception:
-                return {"_raw": response.text}
+            except Exception as exc:
+                raise OpenZyncError(
+                    message=(
+                        f"Expected JSON from {url} "
+                        f"(status {response.status_code}), "
+                        f"got non-JSON body: {response.text[:200]!r}"
+                    ),
+                    status_code=response.status_code,
+                    detail={
+                        "url": url,
+                        "content_preview": response.text[:200],
+                    },
+                ) from exc
 
         raise OpenZyncError(
             message=f"Request failed after {self._max_retries} retries",

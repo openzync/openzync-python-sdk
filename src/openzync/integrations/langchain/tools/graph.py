@@ -12,6 +12,7 @@ from typing import Any, Type
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
+from openzync._errors import OpenZyncError
 from openzync.client import AsyncOpenZync
 
 # ── Input schemas ───────────────────────────────────────────────────────────
@@ -185,5 +186,20 @@ class ListGraphNodesTool(BaseTool):
 
 
 def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously."""
+    """Run an async coroutine synchronously.
+
+    Raises:
+        OpenZyncError: If called inside a running event loop — use the
+            ``_arun`` async entrypoint instead.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise OpenZyncError(
+            message=(
+                "sync client inside running loop — use AsyncOpenZync/async iterator"
+            ),
+        )
     return asyncio.run(coro)

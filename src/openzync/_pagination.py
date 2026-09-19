@@ -7,7 +7,10 @@ subsequent pages as items are consumed.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable
+
+from openzync._errors import OpenZyncError
 
 
 class AsyncPaginatedIterator:
@@ -71,8 +74,6 @@ class SyncPaginatedIterator:
         fetch_page: Callable[[str | None], Any],
         limit: int = 50,
     ) -> None:
-        import asyncio
-
         self._async_iter = AsyncPaginatedIterator(fetch_page, limit)
         self._run = asyncio.run
 
@@ -80,6 +81,16 @@ class SyncPaginatedIterator:
         return self
 
     def __next__(self) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            raise OpenZyncError(
+                message=(
+                    "sync client inside running loop — use AsyncOpenZync/async iterator"
+                ),
+            )
         try:
             return self._run(self._async_iter.__anext__())
         except StopAsyncIteration:

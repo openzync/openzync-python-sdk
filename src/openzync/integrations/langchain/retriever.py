@@ -13,6 +13,7 @@ from typing import Any
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
+from openzync._errors import OpenZyncError
 from openzync.client import AsyncOpenZync
 
 
@@ -116,5 +117,20 @@ class OZGraphRetriever(BaseRetriever):
 
 
 def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously."""
+    """Run an async coroutine synchronously.
+
+    Raises:
+        OpenZyncError: If called inside a running event loop — use
+            ``ainvoke``/``_aget_relevant_documents`` instead.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise OpenZyncError(
+            message=(
+                "sync client inside running loop — use AsyncOpenZync/async iterator"
+            ),
+        )
     return asyncio.run(coro)

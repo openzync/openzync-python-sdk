@@ -26,6 +26,7 @@ class AsyncFactsClient:
         self,
         facts: list[FactTriple | dict],
         session_id: str,
+        idempotency_key: str | None = None,
     ) -> FactBatchResponse:
         """Ingest a batch of fact triples.
 
@@ -33,6 +34,11 @@ class AsyncFactsClient:
             facts: List of fact triples (max 500).
             session_id: Session external ID — required, all ingestion targets
                 an existing session.
+            idempotency_key: Optional ``Idempotency-Key`` header. When
+                provided, ``POST`` retries on 429/5xx and timeouts are
+                enabled (safe retry — the server dedupes by key); without
+                it the request fails fast with no retry so a write is never
+                duplicated.
 
         Returns:
             ``FactBatchResponse`` with job_id and accepted count.
@@ -45,11 +51,15 @@ class AsyncFactsClient:
             ],
             "session_id": session_id,
         }
+        headers = None
+        if idempotency_key is not None:
+            headers = {"Idempotency-Key": idempotency_key}
 
         data = await self._http.request(
             "POST",
             f"/v1/projects/{pid}/facts",
             json_body=body,
+            headers=headers,
         )
         return FactBatchResponse(**data)
 

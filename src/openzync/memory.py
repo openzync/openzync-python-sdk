@@ -43,7 +43,11 @@ class AsyncMemoryClient:
                 their positional index.
             session_id: Session external ID — required, all ingestion targets
                 an existing session.
-            idempotency_key: Optional ``Idempotency-Key`` header.
+            idempotency_key: Optional ``Idempotency-Key`` header. When
+                provided, ``POST`` retries on 429/5xx and timeouts are
+                enabled (safe retry — the server dedupes by key); without
+                it the request fails fast with no retry so a write is never
+                duplicated.
             blobs: Optional list of ``(filename, data, mime_type)`` tuples.
                 When provided, the request is sent as ``multipart/form-data``
                 with the JSON payload in a ``data`` field and each blob as a
@@ -112,10 +116,27 @@ class AsyncMemoryClient:
         )
         return ContextResponse(**data)
 
-    async def delete(self) -> None:
-        """Delete all memory for a project (soft-delete)."""
+    async def delete(self, *, confirm: str) -> None:
+        """Delete all memory for a project (soft-delete, confirm-gated).
+
+        This is the GDPR memory-wipe operation and is **not** reversible —
+        deleted data is marked inactive but preserved for a 30-day grace
+        period before hard-purge.
+
+        Args:
+            confirm: Must equal the project ID — the server rejects any
+                other value with 422. Pass the project ID explicitly to
+                prove intent; there is no default.
+
+        Raises:
+            ValidationError: If ``confirm`` does not match the project ID.
+        """
         pid = await self._http.resolve_project_id()
-        await self._http.request("DELETE", f"/v1/projects/{pid}/memory")
+        await self._http.request(
+            "DELETE",
+            f"/v1/projects/{pid}/memory",
+            json_body={"confirm": confirm},
+        )
 
 
 def _as_message(m: Message | dict) -> dict:

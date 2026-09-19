@@ -8,6 +8,7 @@ searchable across sessions.
 from __future__ import annotations
 
 import asyncio
+import warnings
 from typing import Any
 
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -18,7 +19,7 @@ from langchain_core.messages import (
     SystemMessage,
 )
 
-from openzync._errors import NotFoundError
+from openzync._errors import NotFoundError, OpenZyncError
 from openzync.client import AsyncOpenZync
 
 # ── Message conversion helpers ──────────────────────────────────────────────
@@ -58,7 +59,20 @@ def _run_async(coro: Any) -> Any:
     ⚠️  Not safe inside a running event loop (Jupyter, async apps).
         Use the async methods (``aget_messages``, ``aadd_messages``, etc.)
         in async environments.
+
+    Raises:
+        OpenZyncError: If called inside a running event loop.
     """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise OpenZyncError(
+            message=(
+                "sync client inside running loop — use AsyncOpenZync/async iterator"
+            ),
+        )
     return asyncio.run(coro)
 
 
@@ -168,11 +182,28 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             messages: LangChain ``BaseMessage`` instances to persist.
             blobs: Optional list of ``(filename, data, mime_type)`` tuples.
         """
-        asyncio.run(self.aadd_messages(messages, blobs=blobs))
+        _run_async(self.aadd_messages(messages, blobs=blobs))
 
-    def clear(self) -> None:
+    def clear(self, confirm: str | None = None) -> None:
+        """Clear history.
+
+        Without ``confirm`` this clears only the local cache — it no
+        longer deletes remote memory.
+
+        Args:
+            confirm: When provided (must equal the project ID), wipes the
+                project's remote memory via the confirm-gated server
+                delete, then clears the local cache.
+        """
         self._messages = []
-        _run_async(self._client.memory.delete())
+        if confirm is None:
+            warnings.warn(
+                "clear() no longer deletes remote memory, use confirm-gated delete",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return
+        _run_async(self._client.memory.delete(confirm=confirm))
 
     # ── Async interface (primitive) ─────────────────────────────────────
 
@@ -213,6 +244,23 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             blobs=blobs,
         )
 
-    async def aclear(self) -> None:
+    async def aclear(self, confirm: str | None = None) -> None:
+        """Clear history (async).
+
+        Without ``confirm`` this clears only the local cache — it no
+        longer deletes remote memory.
+
+        Args:
+            confirm: When provided (must equal the project ID), wipes the
+                project's remote memory via the confirm-gated server
+                delete, then clears the local cache.
+        """
         self._messages = []
-        await self._client.memory.delete()
+        if confirm is None:
+            warnings.warn(
+                "clear() no longer deletes remote memory, use confirm-gated delete",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return
+        await self._client.memory.delete(confirm=confirm)
