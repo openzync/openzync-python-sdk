@@ -63,6 +63,9 @@ class SyncPaginatedIterator:
 
     Wraps ``AsyncPaginatedIterator`` via ``asyncio.run()``.
 
+    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
+        Use ``AsyncOpenZync`` / ``await`` the async iterator instead.
+
     Usage::
 
         for user in client.users.list():
@@ -88,7 +91,8 @@ class SyncPaginatedIterator:
         else:
             raise OpenZyncError(
                 message=(
-                    "sync client inside running loop — use AsyncOpenZync/async iterator"
+                    "sync client inside running loop — use AsyncOpenZync / await "
+                    "the async iterator (async for ...) instead of the sync client"
                 ),
             )
         try:

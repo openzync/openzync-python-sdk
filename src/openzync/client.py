@@ -129,6 +129,10 @@ def _fail_loud_if_running_loop() -> None:
     run inside an existing loop — surfacing ``RuntimeError`` here would
     obscure the fix. Fail loud with the actionable alternative instead.
 
+    ⚠️  Do not call sync client methods inside a running event loop
+        (Jupyter, async web handlers, LangChain async paths).
+        Use ``AsyncOpenZync`` with ``await`` instead.
+
     Raises:
         OpenZyncError: If an event loop is already running in this thread.
     """
@@ -137,12 +141,21 @@ def _fail_loud_if_running_loop() -> None:
     except RuntimeError:
         return
     raise OpenZyncError(
-        message="sync client inside running loop — use AsyncOpenZync/async iterator",
+        message=(
+            "sync client inside running loop — use AsyncOpenZync / await "
+            "the async client (e.g. await client.memory.ingest(...)) "
+            "instead of the sync client"
+        ),
     )
 
 
 class _SyncDomainWrapper:
-    """Wraps an async domain client, calling each method via ``asyncio.run()``."""
+    """Wraps an async domain client, calling each method via ``asyncio.run()``.
+
+    ⚠️  Not safe inside a running event loop — use ``AsyncOpenZync`` /
+        ``await`` instead. Every sync call fails loud with ``OpenZyncError``
+        when a loop is running.
+    """
 
     def __init__(self, async_client: Any) -> None:
         self._async = async_client

@@ -57,8 +57,8 @@ def _run_async(coro: Any) -> Any:
     """Run an async coroutine synchronously via ``asyncio.run()``.
 
     ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use the async methods (``aget_messages``, ``aadd_messages``, etc.)
-        in async environments.
+        Use ``AsyncOpenZync`` / ``await`` the async methods
+        (``aget_messages``, ``aadd_messages``, etc.) in async environments.
 
     Raises:
         OpenZyncError: If called inside a running event loop.
@@ -70,7 +70,9 @@ def _run_async(coro: Any) -> Any:
     else:
         raise OpenZyncError(
             message=(
-                "sync client inside running loop — use AsyncOpenZync/async iterator"
+                "sync client inside running loop — use AsyncOpenZync / await "
+                "the async methods (aget_messages, aadd_messages, aclear) "
+                "instead of the sync client"
             ),
         )
     return asyncio.run(coro)
