@@ -49,6 +49,10 @@ from openzync.models.extraction import (
     StructuredExtractionResponse,
     StructuredExtractionListResponse,
 )
+from openzync.models.schema import (
+    SchemaResponse,
+    SchemaPreviewResponse,
+)
 
 __all__ = [
     "BlobMetadata",
@@ -85,4 +89,6 @@ __all__ = [
     "ClassificationListResponse",
     "StructuredExtractionResponse",
     "StructuredExtractionListResponse",
+    "SchemaResponse",
+    "SchemaPreviewResponse",
 ]

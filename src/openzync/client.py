@@ -25,6 +25,7 @@ from openzync.memory import AsyncMemoryClient
 from openzync.observations import AsyncObservationsClient
 from openzync.projects import AsyncProjectsClient
 from openzync.search import AsyncSearchClient
+from openzync.schemas import AsyncSchemasClient
 from openzync.sessions import AsyncSessionsClient
 from openzync.structured_extractions import AsyncStructuredExtractionsClient
 from openzync.users import AsyncUsersClient
@@ -67,6 +68,7 @@ class AsyncOpenZync:
         self.observations = AsyncObservationsClient(self._http)
         self.classifications = AsyncClassificationsClient(self._http)
         self.structured_extractions = AsyncStructuredExtractionsClient(self._http)
+        self.schemas = AsyncSchemasClient(self._http)
 
     async def close(self) -> None:
         """Close the underlying HTTP connection pool."""
@@ -115,6 +117,7 @@ class OpenZync:
         self.structured_extractions = _SyncDomainWrapper(
             self._async.structured_extractions
         )
+        self.schemas = _SyncDomainWrapper(self._async.schemas)
 
     def close(self) -> None:
         """Close the underlying HTTP connection pool."""
