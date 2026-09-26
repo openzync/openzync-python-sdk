@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from openzync.models.user import UserResponse
+
 
 class CreateProjectRequest(BaseModel):
     """Request body for ``POST /v1/projects``."""
@@ -63,3 +65,6 @@ class ProjectMemberResponse(BaseModel):
     user_id: str = Field(..., description="User UUID.")
     role: str = Field(..., description="Project role: owner or member.")
     created_at: str = Field(..., description="ISO-8601 timestamp.")
+    user: UserResponse | None = Field(
+        default=None, description="Nested user, null when the user row is missing."
+    )
