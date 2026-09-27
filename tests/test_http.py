@@ -26,13 +26,20 @@ class TestAsyncHTTPTransport:
     """Tests for ``AsyncHTTPTransport``."""
 
     @pytest.mark.asyncio
-    async def test_request_204_returns_none(self, transport):
-        """204 No Content returns None."""
+    async def test_request_204(self, transport):
+        """204 returns None for DELETE only; body-expecting methods raise."""
+        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
+            mock.delete("/v1/no-content").respond(status_code=204)
+
+            assert await transport.request("DELETE", "/v1/no-content") is None
+
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             mock.get("/v1/no-content").respond(status_code=204)
 
-            result = await transport.request("GET", "/v1/no-content")
-            assert result is None
+            with pytest.raises(OpenZyncError) as exc_info:
+                await transport.request("GET", "/v1/no-content")
+            assert exc_info.value.message == "empty response"
+            assert exc_info.value.status_code == 204
 
     @pytest.mark.asyncio
     async def test_request_non_json_error_body(self, transport):
@@ -49,7 +56,7 @@ class TestAsyncHTTPTransport:
 
     @pytest.mark.asyncio
     async def test_request_non_json_success_body(self, transport):
-        """Success response with non-JSON body returns _raw wrapper."""
+        """2xx with a non-JSON body raises and reports the status/URL/preview."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             mock.get("/v1/raw").respond(
                 status_code=200,
@@ -57,8 +64,19 @@ class TestAsyncHTTPTransport:
                 headers={"Content-Type": "text/plain"},
             )
 
-            result = await transport.request("GET", "/v1/raw")
-            assert result == {"_raw": "plain text"}
+            with pytest.raises(OpenZyncError) as exc_info:
+                await transport.request("GET", "/v1/raw")
+
+            exc = exc_info.value
+            assert exc.status_code == 200
+            assert "Expected JSON" in exc.message
+            assert "status 200" in exc.message
+            assert "non-JSON body: 'plain text'" in exc.message
+            assert f"{TEST_BASE_URL}/v1/raw" in exc.message
+            assert exc.detail == {
+                "url": f"{TEST_BASE_URL}/v1/raw",
+                "content_preview": "plain text",
+            }
 
     @pytest.mark.asyncio
     async def test_request_timeout_triggers_retry(self, transport):
@@ -136,12 +154,14 @@ class TestAsyncHTTPTransport:
 
     @pytest.mark.asyncio
     async def test_request_multipart_204(self, transport):
-        """request_multipart with 204 returns None."""
+        """204 is a contract violation for POST — raises instead of returning None."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             mock.post("/v1/upload").respond(status_code=204)
 
-            result = await transport.request_multipart("POST", "/v1/upload")
-            assert result is None
+            with pytest.raises(OpenZyncError) as exc_info:
+                await transport.request_multipart("POST", "/v1/upload")
+            assert exc_info.value.message == "empty response"
+            assert exc_info.value.status_code == 204
 
     @pytest.mark.asyncio
     async def test_request_multipart_non_json_body(self, transport):
@@ -157,7 +177,7 @@ class TestAsyncHTTPTransport:
 
     @pytest.mark.asyncio
     async def test_request_multipart_retry_on_503(self, transport):
-        """request_multipart retries on 503."""
+        """POST is retried on 503 only when an Idempotency-Key is present."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             route = mock.post("/v1/upload")
             route.side_effect = [
@@ -165,8 +185,24 @@ class TestAsyncHTTPTransport:
                 Response(202, json={"status": "ok"}),
             ]
 
-            result = await transport.request_multipart("POST", "/v1/upload")
+            # No Idempotency-Key — a non-idempotent write must not be replayed.
+            with pytest.raises(OpenZyncError) as exc_info:
+                await transport.request_multipart("POST", "/v1/upload")
+            assert exc_info.value.status_code == 503
+            assert route.call_count == 1
+
+        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
+            route = mock.post("/v1/upload")
+            route.side_effect = [
+                Response(503),
+                Response(202, json={"status": "ok"}),
+            ]
+
+            result = await transport.request_multipart(
+                "POST", "/v1/upload", headers={"Idempotency-Key": "k1"}
+            )
             assert result == {"status": "ok"}
+            assert route.call_count == 2
 
     @pytest.mark.asyncio
     async def test_build_url_normalizes_path(self, transport):
@@ -237,25 +273,40 @@ class TestAsyncHTTPTransport:
 
     @pytest.mark.asyncio
     async def test_request_multipart_timeout_exception(self, transport):
-        """Multipart TimeoutException triggers retry and eventually 504."""
+        """Multipart timeout: fails fast without an Idempotency-Key, retries with one."""
         original = transport._client.request
+        original_wait = transport._wait
         call_count: list[int] = [0]
 
         async def timeout_request(*args: object, **kwargs: object) -> object:
             call_count[0] += 1
             raise httpx.TimeoutException("timed out")
 
+        async def no_wait(attempt: int) -> None:
+            return None
+
         transport._client.request = timeout_request  # type: ignore[method-assign]
+        transport._wait = no_wait  # type: ignore[method-assign]
         try:
-            with pytest.raises(OpenZyncError, match="timed out after 3 retries"):
+            # No Idempotency-Key — the POST is not replayed.
+            with pytest.raises(OpenZyncError, match="timed out"):
                 await transport.request_multipart("POST", "/v1/upload")
-            assert call_count[0] == 4
+            assert call_count[0] == 1
+
+            call_count[0] = 0
+            with pytest.raises(OpenZyncError, match="timed out") as exc_info:
+                await transport.request_multipart(
+                    "POST", "/v1/upload", headers={"Idempotency-Key": "k1"}
+                )
+            assert exc_info.value.status_code == 504
+            assert call_count[0] == 4  # max_retries + 1
         finally:
             transport._client.request = original
+            transport._wait = original_wait
 
     @pytest.mark.asyncio
     async def test_request_multipart_non_json_success(self, transport):
-        """Multipart with non-JSON success returns _raw wrapper."""
+        """Multipart 2xx with a non-JSON body raises and reports the body preview."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             mock.post("/v1/upload").respond(
                 status_code=201,
@@ -263,8 +314,18 @@ class TestAsyncHTTPTransport:
                 headers={"Content-Type": "text/plain"},
             )
 
-            result = await transport.request_multipart("POST", "/v1/upload")
-            assert result == {"_raw": "plain ok"}
+            with pytest.raises(OpenZyncError) as exc_info:
+                await transport.request_multipart("POST", "/v1/upload")
+
+            exc = exc_info.value
+            assert exc.status_code == 201
+            assert "Expected JSON" in exc.message
+            assert "status 201" in exc.message
+            assert "non-JSON body: 'plain ok'" in exc.message
+            assert exc.detail == {
+                "url": f"{TEST_BASE_URL}/v1/upload",
+                "content_preview": "plain ok",
+            }
 
     @pytest.mark.asyncio
     async def test_resolve_project_id_raises_value_error(self, transport):

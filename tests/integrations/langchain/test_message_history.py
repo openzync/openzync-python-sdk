@@ -131,7 +131,7 @@ class TestOZChatMessageHistory:
 
     @pytest.mark.asyncio
     async def test_aclear_deletes_memory(self, mock_client):
-        """Clear calls memory.delete and clears cache."""
+        """aclear() only deletes remote memory when confirm is passed."""
         mock_client.memory.delete = AsyncMock()
 
         history = OZChatMessageHistory(
@@ -140,9 +140,17 @@ class TestOZChatMessageHistory:
             client=mock_client,
         )
         history._messages = [HumanMessage(content="Hi")]  # seed cache
-        await history.aclear()
 
-        mock_client.memory.delete.assert_awaited_once_with()
+        # No confirm — deprecated: local cache cleared, remote untouched.
+        with pytest.warns(DeprecationWarning, match="no longer deletes remote"):
+            await history.aclear()
+        mock_client.memory.delete.assert_not_awaited()
+        assert history._messages == []
+
+        # With confirm — the confirm-gated remote delete runs.
+        history._messages = [HumanMessage(content="Hi")]
+        await history.aclear(confirm="project-1")
+        mock_client.memory.delete.assert_awaited_once_with(confirm="project-1")
         assert history._messages == []
 
     def test_add_message_sync_ingests(self, mock_client):
@@ -257,7 +265,7 @@ class TestOZChatMessageHistory:
         mock_client.memory.ingest.assert_called_once()
 
     def test_sync_clear(self, mock_client):
-        """Sync clear resets cache and calls delete."""
+        """Sync clear resets the cache; only confirm triggers the remote delete."""
         mock_client.memory.delete = AsyncMock()
         history = OZChatMessageHistory(
             session_id="session-1",
@@ -265,9 +273,18 @@ class TestOZChatMessageHistory:
             client=mock_client,
         )
         history._messages = [HumanMessage(content="Hi")]
-        history.clear()
+
+        # No confirm — deprecated: local cache cleared, remote untouched.
+        with pytest.warns(DeprecationWarning, match="no longer deletes remote"):
+            history.clear()
         assert history._messages == []
-        mock_client.memory.delete.assert_called_once()
+        mock_client.memory.delete.assert_not_awaited()
+
+        # With confirm — the confirm-gated remote delete runs.
+        history._messages = [HumanMessage(content="Hi")]
+        history.clear(confirm="project-1")
+        assert history._messages == []
+        mock_client.memory.delete.assert_called_once_with(confirm="project-1")
 
     def test_message_conversion_roundtrip(self):
         """_oz_message_from_base and _base_message_from_oz are inverses."""

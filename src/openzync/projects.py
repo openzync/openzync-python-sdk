@@ -103,19 +103,24 @@ class AsyncProjectsClient:
         *,
         limit: int = 50,
         cursor: str | None = None,
+        include_archived: bool = False,
     ) -> dict:
         """List projects with offset-based pagination.
 
         Args:
             limit: Maximum results per page.
             cursor: Opaque cursor from a previous response (offset value).
+            include_archived: When True, include archived projects.
+                Omitted from the query when False (backend default).
 
         Returns:
             Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
         """
-        params: dict[str, str | int] = {"limit": limit, "offset": 0}
+        params: dict[str, str | int | bool] = {"limit": limit, "offset": 0}
         if cursor is not None:
             params["offset"] = int(cursor)
+        if include_archived:
+            params["include_archived"] = True
         data = await self._http.request(
             "GET",
             "/v1/projects",
@@ -126,7 +131,9 @@ class AsyncProjectsClient:
             return {"data": data, "next_cursor": None, "has_more": False}
         return data
 
-    def list_iter(self, *, limit: int = 50) -> AsyncPaginatedIterator:
+    def list_iter(
+        self, *, limit: int = 50, include_archived: bool = False
+    ) -> AsyncPaginatedIterator:
         """Iterate over all projects with auto-pagination.
 
         Usage::
@@ -136,7 +143,9 @@ class AsyncProjectsClient:
         """
 
         async def fetch_page(cursor: str | None = None) -> dict:
-            return await self.list(limit=limit, cursor=cursor)
+            return await self.list(
+                limit=limit, cursor=cursor, include_archived=include_archived
+            )
 
         return AsyncPaginatedIterator(fetch_page, limit)
 

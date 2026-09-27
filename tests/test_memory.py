@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from openzync.models.memory import (
@@ -134,11 +136,14 @@ class TestMemoryClient:
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, async_client, mock_http, mock_resolve):
-        """DELETE /memory returns 204."""
-        mock_http.delete("/v1/projects/p1/memory").respond(status_code=204)
+        """DELETE /memory is confirm-gated; 204 returns None."""
+        route = mock_http.delete("/v1/projects/p1/memory").respond(status_code=204)
 
-        await async_client.memory.delete()
+        result = await async_client.memory.delete(confirm="p1")
         # No exception means success
+        assert result is None
+        # confirm must reach the server — the gate is the whole point
+        assert json.loads(route.calls.last.request.content) == {"confirm": "p1"}
 
     @pytest.mark.asyncio
     async def test_ingest_memory_validation_error(
