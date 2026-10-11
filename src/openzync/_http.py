@@ -2,7 +2,7 @@
 
 Wraps ``httpx.AsyncClient`` with:
 - Bearer token authentication
-- Exponential backoff retry for 429/5xx responses
+- Exponential backoff retry for 429/5xx responses, honoring ``Retry-After``
 - Structured error mapping via ``_errors.raise_on_error``
 """
 
@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
 
-from openzync._errors import OpenZyncError, raise_on_error
+from openzync._errors import AuthorizationError, OpenZyncError, raise_on_error
 from openzync._version import __version__ as _sdk_version
 
 logger = logging.getLogger(__name__)
@@ -31,13 +34,78 @@ BASE_DELAY: float = 1.0
 """Base delay in seconds for exponential backoff."""
 
 DEFAULT_TIMEOUT: float = 30.0
-"""Default per-request timeout in seconds."""
+"""Default per-request timeout in seconds (connect, read, pool)."""
+
+MAX_RETRY_AFTER: float = 60.0
+"""Upper bound in seconds on a server-sent ``Retry-After`` delay.
+
+A hostile or misconfigured server could otherwise stall the worker with
+an absurd delay (``Retry-After: 999999999`` or an HTTP-date in year
+9999). Legitimate small delays pass through untouched.
+"""
+
+WRITE_TIMEOUT: float = 300.0
+"""Write budget in seconds for request bodies.
+
+Reads stay at ``DEFAULT_TIMEOUT`` while writes get the longer of
+``WRITE_TIMEOUT`` and the caller-supplied ``timeout``. Multipart memory
+ingestion uploads blobs — a 30s write budget aborts large uploads
+before the server has finished receiving them.
+"""
 
 # httpx encodes ``data`` as ``application/x-www-form-urlencoded`` unless
 # ``files`` is truthy — an empty list/dict silently downgrades a multipart
 # call.  ``_EMPTY_FILES`` is truthy yet iterates to zero parts, forcing
 # genuine multipart encoding with no file parts (a valid ``data``-only form).
 _EMPTY_FILES = iter(())
+
+
+def _parse_retry_after(response: httpx.Response) -> float | None:
+    """Parse a ``Retry-After`` header into a non-negative delay in seconds.
+
+    Supports both forms defined by RFC 7231 §7.1.3: delay-seconds
+    (``Retry-After: 120``) and HTTP-date (``Retry-After: Wed, 21 Oct
+    2015 07:28:00 GMT``), the latter resolved against the current UTC
+    clock.
+
+    Args:
+        response: Response that may carry the header.
+
+    Returns:
+        Delay in seconds (``0.0`` when the server says "retry now"), or
+        ``None`` when the header is absent or unparseable — the caller
+        falls back to exponential backoff, the documented default.
+    """
+    raw = response.headers.get("retry-after")
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+
+    # delay-seconds form (1*DIGIT). str.isdigit() also rejects "nan" and
+    # "inf", which float() would happily accept and asyncio.sleep() would
+    # then reject at sleep time. isascii() keeps unicode digit-lookalikes
+    # ("²".isdigit() is True but float("²") raises) on the parse path.
+    if value.isascii() and value.isdigit():
+        return min(float(value), MAX_RETRY_AFTER)
+
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        # HTTP-date is defined as GMT (RFC 7231 §7.1.1.1); treat a
+        # zone-less date as UTC rather than guessing local time.
+        retry_at = retry_at.replace(tzinfo=UTC)
+    return min(
+        max(0.0, (retry_at - datetime.now(UTC)).total_seconds()), MAX_RETRY_AFTER
+    )
+
+
+def _attempts_phrase(attempts: int) -> str:
+    """Format an attempt count for error messages (``"1 attempt"``)."""
+    return f"{attempts} attempt" if attempts == 1 else f"{attempts} attempts"
 
 
 def _has_idempotency_key(headers: dict[str, str] | None) -> bool:
@@ -60,7 +128,9 @@ class AsyncHTTPTransport:
     Args:
         api_key: The OpenZync API key (sent as ``Authorization: Bearer <key>``).
         base_url: Base URL of the OpenZync API server.
-        timeout: Per-request timeout in seconds.
+        timeout: Per-request timeout in seconds for connect, read, and
+            pool operations.  Writes use a longer budget (see
+            ``WRITE_TIMEOUT``) so blob uploads are not cut off.
         max_retries: Maximum retry count for retryable statuses.
     """
 
@@ -81,13 +151,15 @@ class AsyncHTTPTransport:
         # SDK identity moved to X-SDK-Version header.
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
-            timeout=httpx.Timeout(timeout),
+            # connect/read/pool stay at ``timeout``; writes get the longer
+            # blob-upload budget, never below the caller's read timeout.
+            timeout=httpx.Timeout(timeout, write=max(timeout, WRITE_TIMEOUT)),
             http2=True,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "application/json",
                 "User-Agent": (
-                    "Mozilla/5.0 (compatible; OpenZyncSDK/1.0; "
+                    "Mozilla/5.0 (compatible; OpenZyncSDK; "
                     f"+https://openzync.tech; {_sdk_version})"
                 ),
                 "X-SDK-Version": _sdk_version,
@@ -109,7 +181,9 @@ class AsyncHTTPTransport:
         """Make an HTTP request with retry and error mapping.
 
         Retry policy: ``GET``/``PUT``/``PATCH``/``DELETE`` retry on
-        429/5xx and timeouts with exponential backoff. ``POST`` is only
+        429/5xx and timeouts with exponential backoff (jittered, and
+        honoring the server's ``Retry-After`` header when present).
+        ``POST`` is only
         retried when an ``Idempotency-Key`` header is present — without it
         the request fails fast (mapped error, no retry) so a non-idempotent
         write is never duplicated.
@@ -151,7 +225,10 @@ class AsyncHTTPTransport:
                     await self._wait(attempt)
                     continue
                 raise OpenZyncError(
-                    message=f"Request timed out after {self._max_retries} retries: {exc}",
+                    message=(
+                        f"Request timed out after "
+                        f"{_attempts_phrase(attempt + 1)}: {exc}"
+                    ),
                     status_code=504,
                 ) from exc
 
@@ -168,7 +245,7 @@ class AsyncHTTPTransport:
                         "attempt": attempt + 1,
                     },
                 )
-                await self._wait(attempt)
+                await self._wait(attempt, response)
                 continue
 
             # 204 No Content — only DELETE is typed to return None; any
@@ -215,27 +292,8 @@ class AsyncHTTPTransport:
 
         # Should not reach here, but safety net:
         raise OpenZyncError(
-            message=f"Request failed after {self._max_retries} retries",
+            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
             status_code=500,
-        )
-
-    async def request_stream(
-        self,
-        method: str,
-        path: str,
-        json_body: dict | None = None,
-        params: dict[str, str | int] | None = None,
-    ) -> httpx.Response:
-        """Make a streaming HTTP request (no JSON deserialization).
-
-        Used for endpoints that return non-JSON responses (e.g. raw text).
-        """
-        url = self._build_url(path)
-        return await self._client.request(
-            method=method,
-            url=url,
-            json=json_body,
-            params=params,
         )
 
     async def request_multipart(
@@ -301,7 +359,10 @@ class AsyncHTTPTransport:
                     await self._wait(attempt)
                     continue
                 raise OpenZyncError(
-                    message=f"Request timed out after {self._max_retries} retries: {exc}",
+                    message=(
+                        f"Request timed out after "
+                        f"{_attempts_phrase(attempt + 1)}: {exc}"
+                    ),
                     status_code=504,
                 ) from exc
 
@@ -318,7 +379,7 @@ class AsyncHTTPTransport:
                         "attempt": attempt,
                     },
                 )
-                await self._wait(attempt)
+                await self._wait(attempt, response)
                 continue
 
             # 204 No Content — only DELETE is typed to return None; any
@@ -364,7 +425,7 @@ class AsyncHTTPTransport:
                 ) from exc
 
         raise OpenZyncError(
-            message=f"Request failed after {self._max_retries} retries",
+            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
             status_code=500,
         )
 
@@ -374,9 +435,24 @@ class AsyncHTTPTransport:
             path = f"/{path}"
         return f"{self._base_url}{path}"
 
-    async def _wait(self, attempt: int) -> None:
-        """Exponential backoff sleep."""
-        delay = BASE_DELAY * (2**attempt)
+    async def _wait(self, attempt: int, response: httpx.Response | None = None) -> None:
+        """Sleep before the next retry.
+
+        Honors the server's ``Retry-After`` header (seconds or HTTP-date
+        form) when the retried response carries one. Otherwise exponential
+        backoff with ±50% jitter, so concurrent clients don't retry in
+        lockstep (thundering herd).
+
+        Args:
+            attempt: Zero-based retry index (0 = first retry).
+            response: The response being retried, if any — timeouts have
+                no response to read a header from.
+        """
+        retry_after = _parse_retry_after(response) if response is not None else None
+        if retry_after is not None:
+            await asyncio.sleep(retry_after)
+            return
+        delay = BASE_DELAY * (2**attempt) * random.uniform(0.5, 1.5)
         await asyncio.sleep(delay)
 
     async def resolve_project_id(self) -> str:
@@ -390,8 +466,9 @@ class AsyncHTTPTransport:
             The project UUID string scoped to this API key.
 
         Raises:
-            ValueError: If the API key is not scoped to a project (e.g.
-                org-wide keys that were created before project scoping).
+            AuthorizationError: If the API key is authenticated but not
+                scoped to a project (e.g. org-wide keys that were created
+                before project scoping).
             AuthenticationError: If the key is revoked or invalid.
         """
         if self._project_id is not None:
@@ -400,7 +477,9 @@ class AsyncHTTPTransport:
         data = await self.request("GET", "/v1/api-key/project-id")
         pid: str | None = data.get("project_id")
         if pid is None:
-            raise ValueError(
+            # ⚠️ BREAKING: was ValueError — the key authenticated fine but
+            # lacks project scope, i.e. an authorization failure.
+            raise AuthorizationError(
                 "Could not determine project_id from API key. "
                 "Ensure your API key is scoped to a project."
             )

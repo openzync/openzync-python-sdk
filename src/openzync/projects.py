@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from openzync._http import AsyncHTTPTransport
 from openzync._pagination import AsyncPaginatedIterator
 from openzync.models.project import (
@@ -11,6 +13,13 @@ from openzync.models.project import (
     ProjectResponse,
     UpdateProjectRequest,
 )
+
+# Mirrors core's schemas/sorting.py Literals, minus keys unreachable from the
+# SDK: ``pinned_at`` only resolves in core's pinned_only branch, which 422s
+# for API-key auth (pinned_only requires dashboard auth).
+ProjectSortBy = Literal["name", "created_at", "updated_at"]
+ProjectMemberSortBy = Literal["created_at", "role", "name", "email"]
+SortDir = Literal["asc", "desc"]
 
 
 class AsyncProjectsClient:
@@ -98,54 +107,94 @@ class AsyncProjectsClient:
         )
         return ProjectResponse(**data)
 
+    # ⚠️ BREAKING: returns core's real contract — a flat list of typed
+    # ``ProjectResponse`` models (core's ``response_model=list[ProjectResponse]``)
+    # — instead of the fabricated ``{"data", "next_cursor", "has_more"} envelope.
+    # The ``cursor`` param is gone: core paginates offset-based, so callers now
+    # advance ``offset`` explicitly.
     async def list(
         self,
         *,
         limit: int = 50,
-        cursor: str | None = None,
+        offset: int = 0,
         include_archived: bool = False,
-    ) -> dict:
-        """List projects with offset-based pagination.
+        sort_by: ProjectSortBy | None = None,
+        sort_dir: SortDir = "desc",
+    ) -> list[ProjectResponse]:
+        """List projects in the organisation (offset-based pagination).
 
         Args:
-            limit: Maximum results per page.
-            cursor: Opaque cursor from a previous response (offset value).
+            limit: Maximum results per page (core accepts 1–200; larger
+                values are rejected with 422).
+            offset: Number of results to skip. Advance by ``limit`` to
+                page through results.
             include_archived: When True, include archived projects.
                 Omitted from the query when False (backend default).
+            sort_by: Sort key. Omitted from the query when None (backend
+                default ``created_at``/``desc``).
+            sort_dir: Sort direction; only sent alongside ``sort_by``
+                (core ignores a direction without a key).
 
         Returns:
-            Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
+            Flat list of ``ProjectResponse`` models — exactly what core
+            returns. A page shorter than ``limit`` is the last page.
         """
-        params: dict[str, str | int | bool] = {"limit": limit, "offset": 0}
-        if cursor is not None:
-            params["offset"] = int(cursor)
+        params: dict[str, str | int | bool] = {"limit": limit, "offset": offset}
         if include_archived:
             params["include_archived"] = True
+        if sort_by is not None:
+            params["sort_by"] = sort_by
+            params["sort_dir"] = sort_dir
         data = await self._http.request(
             "GET",
             "/v1/projects",
             params=params,
         )
-        # Backend returns a flat array — wrap in paginated envelope
-        if isinstance(data, list):
-            return {"data": data, "next_cursor": None, "has_more": False}
-        return data
+        return [ProjectResponse(**item) for item in data]
 
+    # ⚠️ BREAKING: now offset-paginates core's flat-array contract and yields
+    # typed ``ProjectResponse`` models. The old synthesized envelope always
+    # carried ``has_more=False``, so iteration stopped after page 1 and any
+    # org with more than ``limit`` projects silently saw exactly ``limit``
+    # items.
     def list_iter(
-        self, *, limit: int = 50, include_archived: bool = False
+        self,
+        *,
+        limit: int = 50,
+        include_archived: bool = False,
+        sort_by: ProjectSortBy | None = None,
+        sort_dir: SortDir = "desc",
     ) -> AsyncPaginatedIterator:
         """Iterate over all projects with auto-pagination.
+
+        Fetches pages of ``limit`` projects by advancing ``offset`` and
+        stops when a short page (fewer than ``limit`` items) or an empty
+        page returns.
 
         Usage::
 
             async for project in client.projects.list_iter():
-                print(project["name"])
+                print(project.name)
         """
 
         async def fetch_page(cursor: str | None = None) -> dict:
-            return await self.list(
-                limit=limit, cursor=cursor, include_archived=include_archived
+            offset = int(cursor) if cursor is not None else 0
+            page = await self.list(
+                limit=limit,
+                offset=offset,
+                include_archived=include_archived,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
             )
+            # Core returns a bare array with no envelope — translate the
+            # offset semantics into the iterator's cursor contract: a full
+            # page implies more rows may follow; a short page terminates.
+            has_more = len(page) == limit
+            return {
+                "data": page,
+                "next_cursor": str(offset + limit) if has_more else None,
+                "has_more": has_more,
+            }
 
         return AsyncPaginatedIterator(fetch_page, limit)
 
@@ -156,6 +205,21 @@ class AsyncProjectsClient:
             "DELETE",
             f"/v1/projects/{pid}",
         )
+
+    async def unarchive(self) -> ProjectResponse:
+        """Restore an archived project.
+
+        Note: pin/unpin are dashboard-JWT-only and intentionally not exposed.
+
+        Returns:
+            ``ProjectResponse`` with the restored project.
+        """
+        pid = await self._http.resolve_project_id()
+        data = await self._http.request(
+            "POST",
+            f"/v1/projects/{pid}/unarchive",
+        )
+        return ProjectResponse(**data)
 
     async def add_member(
         self,
@@ -217,27 +281,40 @@ class AsyncProjectsClient:
         )
         return ProjectMemberResponse(**data)
 
+    # ⚠️ BREAKING: returns core's real contract — a flat list of typed
+    # ``ProjectMemberResponse`` models (core's
+    # ``response_model=list[ProjectMemberResponse]``) — instead of the raw
+    # envelope dict the docstring used to promise. ``limit``/``cursor`` are
+    # gone: core's members endpoint is not paginated (it lists all members)
+    # and silently ignored those params.
     async def list_members(
         self,
         *,
-        limit: int = 50,
-        cursor: str | None = None,
-    ) -> dict:
-        """List members of a project.
+        sort_by: ProjectMemberSortBy | None = None,
+        sort_dir: SortDir = "asc",
+    ) -> list[ProjectMemberResponse]:
+        """List all members of a project.
 
         Args:
-            limit: Maximum results per page.
-            cursor: Opaque cursor from a previous response.
+            sort_by: Sort key — ``created_at``, ``role``, ``name`` (member's
+                display name), or ``email``. Omitted from the query when
+                None (backend default ``created_at``/``asc``).
+            sort_dir: Sort direction; only sent alongside ``sort_by``
+                (core ignores a direction without a key).
 
         Returns:
-            Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
+            Flat list of ``ProjectMemberResponse`` models with nested
+            ``user`` details (``None`` on the member when the user row is
+            missing).
         """
         pid = await self._http.resolve_project_id()
-        params: dict[str, str | int] = {"limit": limit}
-        if cursor is not None:
-            params["cursor"] = cursor
-        return await self._http.request(
+        params: dict[str, str | int] = {}
+        if sort_by is not None:
+            params["sort_by"] = sort_by
+            params["sort_dir"] = sort_dir
+        data = await self._http.request(
             "GET",
             f"/v1/projects/{pid}/members",
             params=params,
         )
+        return [ProjectMemberResponse(**item) for item in data]

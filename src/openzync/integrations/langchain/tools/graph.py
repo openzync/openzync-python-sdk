@@ -21,8 +21,9 @@ from openzync.client import AsyncOpenZync
 class GraphSearchInput(BaseModel):
     """Input schema for graph search."""
 
+    # ⚠️ BREAKING: project_id removed — the transport resolves the project
+    # from the API key, so agents must not supply it.
     query: str = Field(..., description="Natural-language search query.")
-    project_id: str = Field(..., description="OpenZync project UUID to search within.")
     types: str | None = Field(
         default=None,
         description="Comma-separated result types: episodes, facts, entities.",
@@ -33,14 +34,14 @@ class GraphSearchInput(BaseModel):
 class GraphNodeDetailInput(BaseModel):
     """Input schema for node detail lookup."""
 
-    project_id: str = Field(..., description="OpenZync project UUID.")
+    # ⚠️ BREAKING: project_id removed — resolved from the API key.
     node_id: str = Field(..., description="UUID of the node to retrieve.")
 
 
 class ListGraphNodesInput(BaseModel):
     """Input schema for listing graph nodes."""
 
-    project_id: str = Field(..., description="OpenZync project UUID.")
+    # ⚠️ BREAKING: project_id removed — resolved from the API key.
     entity_type: str | None = Field(
         default=None,
         description="Optional entity type filter.",
@@ -70,7 +71,6 @@ class GraphSearchTool(BaseTool):
     def _run(
         self,
         query: str,
-        project_id: str,
         types: str | None = None,
         limit: int | None = None,
     ) -> str:
@@ -78,21 +78,17 @@ class GraphSearchTool(BaseTool):
 
         Args:
             query: Search query.
-            project_id: OpenZync project UUID.
             types: Result type filter.
             limit: Max results.
 
         Returns:
             Formatted search results string.
         """
-        return _run_async(
-            self._arun(query, project_id=project_id, types=types, limit=limit)
-        )
+        return _run_async(self._arun(query, types=types, limit=limit))
 
     async def _arun(
         self,
         query: str,
-        project_id: str,
         types: str | None = None,
         limit: int | None = None,
     ) -> str:
@@ -126,11 +122,11 @@ class GraphNodeDetailTool(BaseTool):
     args_schema: Type[BaseModel] = GraphNodeDetailInput
     client: AsyncOpenZync
 
-    def _run(self, project_id: str, node_id: str) -> str:
+    def _run(self, node_id: str) -> str:
         """Retrieve node details (sync)."""
-        return _run_async(self._arun(project_id=project_id, node_id=node_id))
+        return _run_async(self._arun(node_id=node_id))
 
-    async def _arun(self, project_id: str, node_id: str) -> str:
+    async def _arun(self, node_id: str) -> str:
         """Retrieve node details (async)."""
         detail = await self.client.graph.node_detail(node_id)
         lines: list[str] = [
@@ -157,18 +153,14 @@ class ListGraphNodesTool(BaseTool):
 
     def _run(
         self,
-        project_id: str,
         entity_type: str | None = None,
         limit: int | None = None,
     ) -> str:
         """List nodes (sync)."""
-        return _run_async(
-            self._arun(project_id=project_id, entity_type=entity_type, limit=limit)
-        )
+        return _run_async(self._arun(entity_type=entity_type, limit=limit))
 
     async def _arun(
         self,
-        project_id: str,
         entity_type: str | None = None,
         limit: int | None = None,
     ) -> str:

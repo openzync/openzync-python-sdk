@@ -95,7 +95,6 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         client = AsyncOpenZync(api_key="...")
         history = OZChatMessageHistory(
             session_id="session-123",
-            project_id="project-abc",
             client=client,
         )
         history.add_user_message("Hi!")
@@ -109,7 +108,6 @@ class OZChatMessageHistory(BaseChatMessageHistory):
 
     Args:
         session_id: LangChain conversation identifier.
-        project_id: OpenZync project UUID.
         client: An ``AsyncOpenZync`` client instance.
         max_messages: Maximum number of messages to fetch from the server.
 
@@ -120,16 +118,16 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         in async environments.
     """
 
+    # ⚠️ BREAKING: project_id removed — the transport resolves the project
+    # from the API key, so the constructor no longer accepts it.
     def __init__(
         self,
         session_id: str,
-        project_id: str,
         client: AsyncOpenZync,
         *,
         max_messages: int = 1000,
     ) -> None:
         self.session_id = session_id
-        self.project_id = project_id
         self._client = client
         self._max_messages = max_messages
         # None = not loaded; [] = loaded but empty; list = loaded with messages

@@ -21,13 +21,15 @@ class AsyncUsersClient:
     def __init__(self, http: AsyncHTTPTransport) -> None:
         self._http = http
 
+    # ⚠️ BREAKING: the `permissions` parameter was removed — core validates but
+    # silently drops it on POST /v1/users (seeds role defaults), so passing it
+    # granted nothing. Use update() to set permissions after creation.
     async def create(
         self,
         external_id: str,
         name: str | None = None,
         email: str | None = None,
         metadata: dict | None = None,
-        permissions: list[str] | None = None,
     ) -> UserResponse:
         """Create a new user.
 
@@ -35,13 +37,15 @@ class AsyncUsersClient:
             Requires an **org-admin credential** (JWT dashboard session).
             Project-scoped API keys are rejected with ``403 Forbidden``.
 
+        .. note::
+            Permissions are seeded server-side from the role defaults and
+            cannot be set at creation — use :meth:`update` to change them.
+
         Args:
             external_id: Caller-defined user identifier.
             name: Optional display name.
             email: Optional email address.
             metadata: Optional metadata dict.
-            permissions: Optional explicit permission grants. Omit to receive
-                the backend member defaults.
 
         Returns:
             ``UserResponse`` with the created user.
@@ -54,7 +58,6 @@ class AsyncUsersClient:
             name=name,
             email=email,
             metadata=metadata if metadata is not None else {},
-            permissions=permissions,
         )
         data = await self._http.request(
             "POST",

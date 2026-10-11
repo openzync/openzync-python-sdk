@@ -31,7 +31,6 @@ class OZGraphRetriever(BaseRetriever):
         client = AsyncOpenZync(api_key="...")
         retriever = OZGraphRetriever(
             client=client,
-            project_id="project-abc",
             types="episodes,facts",
             k=5,
         )
@@ -39,7 +38,6 @@ class OZGraphRetriever(BaseRetriever):
 
     Args:
         client: An ``AsyncOpenZync`` client instance.
-        project_id: OpenZync project UUID to search within.
         types: Comma-separated result types to include
             (``"episodes"``, ``"facts"``, ``"entities"``).
             Defaults to ``"episodes,facts"``.
@@ -48,8 +46,9 @@ class OZGraphRetriever(BaseRetriever):
             ``None`` means no threshold.
     """
 
+    # ⚠️ BREAKING: project_id removed — the transport resolves the project
+    # from the API key, so the constructor no longer accepts it.
     client: AsyncOpenZync
-    project_id: str
     types: str = "episodes,facts"
     k: int = 5
     score_threshold: float | None = None
@@ -106,9 +105,11 @@ class OZGraphRetriever(BaseRetriever):
                 continue
 
             content = result.get("content", "") or result.get("name", "")
+            # note: no project_id in metadata — the project is resolved
+            # server-side from the API key, so echoing a caller-supplied
+            # value here would be misleading, not informative.
             metadata: dict[str, Any] = {
                 "source": "openzync_graph",
-                "project_id": self.project_id,
                 "score": score,
                 "type": result.get("type"),
                 "node_name": result.get("node_name"),

@@ -20,7 +20,9 @@ class Message(BaseModel):
     """A single conversation turn."""
 
     role: str = Field(
-        ..., description="Message sender role: user, assistant, system, tool."
+        ...,
+        pattern=r"^(user|assistant|system|tool)$",
+        description="Message sender role: user, assistant, system, tool.",
     )
     content: str = Field(default="", description="Message body text.", max_length=65536)
     created_at: datetime | None = Field(default=None, description="ISO-8601 timestamp.")
@@ -30,16 +32,6 @@ class Message(BaseModel):
     blobs: list[BlobMetadata] = Field(
         default_factory=list, description="References to uploaded file attachments."
     )
-
-
-class IngestMemoryRequest(BaseModel):
-    """Request body for ``POST /v1/users/{user_id}/memory``."""
-
-    session_id: str = Field(
-        ...,
-        description="Session external ID — required, all ingestion targets an existing session.",
-    )
-    messages: list[Message] = Field(..., min_length=1, max_length=1000)
 
 
 class IngestMemoryResponse(BaseModel):

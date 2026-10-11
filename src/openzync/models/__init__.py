@@ -1,94 +1,96 @@
 """Re-export all Pydantic models for convenient imports."""
 
-from openzync.models.memory import (
-    BlobMetadata,
-    IngestMemoryRequest,
-    IngestMemoryResponse,
-    ContextResponse,
-    Message,
+from openzync.models.classification import (
+    ClassificationListResponse,
+    ClassificationResponse,
+)
+from openzync.models.extraction import (
+    StructuredExtractionListResponse,
+    StructuredExtractionResponse,
 )
 from openzync.models.facts import (
-    FactTriple,
-    FactBatchRequest,
     FactBatchResponse,
-    FactResponse,
     FactHistoryEvent,
     FactHistoryResponse,
+    FactResponse,
+    FactTriple,
     PaginatedFactsResponse,
 )
 from openzync.models.graph import (
-    GraphNode,
-    GraphEdge,
-    GraphNodeDetail,
     GraphCommunity,
-    PaginatedGraphNodes,
-    PaginatedGraphEdges,
+    GraphEdge,
+    GraphNode,
+    GraphNodeDetail,
+)
+from openzync.models.memory import (
+    BlobMetadata,
+    ContextResponse,
+    IngestMemoryResponse,
+    Message,
+)
+from openzync.models.observation import (
+    ObservationListResponse,
+    ObservationResponse,
+)
+from openzync.models.project import (
+    AddMemberRequest,
+    CreateProjectRequest,
+    ProjectMemberResponse,
+    ProjectResponse,
+    UpdateProjectRequest,
+)
+from openzync.models.schema import (
+    SchemaPreviewResponse,
+    SchemaResponse,
+    SchemaTemplateResponse,
+)
+from openzync.models.search import GlobalSearchItem, GlobalSearchResponse
+from openzync.models.session import (
+    SessionCreateRequest,
+    SessionMessagesResponse,
+    SessionResponse,
 )
 from openzync.models.user import (
     UserCreateRequest,
-    UserUpdateRequest,
     UserResponse,
-    UserListResponse,
-)
-from openzync.models.session import (
-    SessionCreateRequest,
-    SessionResponse,
-    SessionListResponse,
-    SessionMessagesResponse,
-)
-from openzync.models.search import GlobalSearchItem, GlobalSearchResponse
-from openzync.models.observation import (
-    ObservationResponse,
-    ObservationListResponse,
-)
-from openzync.models.classification import (
-    ClassificationResponse,
-    ClassificationListResponse,
-)
-from openzync.models.extraction import (
-    StructuredExtractionResponse,
-    StructuredExtractionListResponse,
-)
-from openzync.models.schema import (
-    SchemaResponse,
-    SchemaPreviewResponse,
+    UserUpdateRequest,
 )
 
 __all__ = [
+    "AddMemberRequest",
     "BlobMetadata",
-    "IngestMemoryRequest",
-    "IngestMemoryResponse",
+    "ClassificationListResponse",
+    "ClassificationResponse",
     "ContextResponse",
-    "Message",
-    "FactTriple",
-    "FactBatchRequest",
+    "CreateProjectRequest",
     "FactBatchResponse",
-    "FactResponse",
     "FactHistoryEvent",
     "FactHistoryResponse",
-    "PaginatedFactsResponse",
-    "GraphNode",
-    "GraphEdge",
-    "GraphNodeDetail",
-    "GraphCommunity",
-    "PaginatedGraphNodes",
-    "PaginatedGraphEdges",
-    "UserCreateRequest",
-    "UserUpdateRequest",
-    "UserResponse",
-    "UserListResponse",
-    "SessionCreateRequest",
-    "SessionResponse",
-    "SessionListResponse",
-    "SessionMessagesResponse",
+    "FactResponse",
+    "FactTriple",
     "GlobalSearchItem",
     "GlobalSearchResponse",
-    "ObservationResponse",
+    "GraphCommunity",
+    "GraphEdge",
+    "GraphNode",
+    "GraphNodeDetail",
+    "IngestMemoryResponse",
+    "Message",
     "ObservationListResponse",
-    "ClassificationResponse",
-    "ClassificationListResponse",
-    "StructuredExtractionResponse",
-    "StructuredExtractionListResponse",
-    "SchemaResponse",
+    "ObservationResponse",
+    "PaginatedFactsResponse",
+    "ProjectMemberResponse",
+    "ProjectResponse",
     "SchemaPreviewResponse",
+    "SchemaResponse",
+    "SchemaTemplateResponse",
+    "SessionCreateRequest",
+    "SessionMessagesResponse",
+    "SessionResponse",
+    "StructuredExtractionListResponse",
+    "StructuredExtractionResponse",
+    "UpdateProjectRequest",
+    "UserCreateRequest",
+    "UserResponse",
+    "UserUpdateRequest",
 ]

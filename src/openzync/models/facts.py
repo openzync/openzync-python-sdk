@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -25,21 +27,17 @@ class FactTriple(BaseModel):
     )
 
 
-class FactBatchRequest(BaseModel):
-    """Request body for ``POST /v1/users/{user_id}/facts``."""
-
-    session_id: str = Field(
-        ...,
-        description="Session external ID — required, all ingestion targets an existing session.",
-    )
-    facts: list[FactTriple] = Field(..., min_length=1, max_length=500)
-
-
 class FactBatchResponse(BaseModel):
     """Response returned after successful fact batch ingestion."""
 
     job_id: str = Field(..., description="UUID of the async enrichment job.")
     accepted_count: int = Field(..., ge=0, description="Number of facts accepted.")
+    superseded_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of previously-active facts invalidated by "
+        "supersession in this batch.",
+    )
     status: str = Field(default="accepted")
     message: str = Field(default="Facts accepted for processing.")
 
@@ -58,18 +56,34 @@ class FactResponse(BaseModel):
     source_episode_id: str | None = Field(
         default=None, description="Source episode UUID."
     )
-    valid_from: str | None = Field(
+    subject_type: str = Field(
+        default="literal",
+        description="Entity type of the subject ('literal' or 'entity').",
+    )
+    object_type: str = Field(
+        default="literal",
+        description="Entity type of the object ('literal' or 'entity').",
+    )
+    subject_entity_id: str | None = Field(
+        default=None,
+        description="FK to graph_entities if the subject was resolved to an entity.",
+    )
+    object_entity_id: str | None = Field(
+        default=None,
+        description="FK to graph_entities if the object was resolved to an entity.",
+    )
+    valid_from: datetime | None = Field(
         default=None, description="Temporal validity start (UTC)."
     )
-    valid_to: str | None = Field(
+    valid_to: datetime | None = Field(
         default=None,
         description="Temporal validity end (UTC) — set when superseded; None while current.",
     )
-    invalid_at: str | None = Field(
+    invalid_at: datetime | None = Field(
         default=None,
         description="Hard-retraction timestamp (UTC); None unless explicitly invalidated.",
     )
-    created_at: str = Field(..., description="Fact creation timestamp (UTC).")
+    created_at: datetime = Field(..., description="Fact creation timestamp (UTC).")
 
 
 class PaginatedFactsResponse(BaseModel):

@@ -32,7 +32,6 @@ class OZMemory(BaseMemory):
         client = AsyncOpenZync(api_key="...")
         memory = OZMemory(
             session_id="session-123",
-            project_id="project-abc",
             client=client,
             memory_key="chat_history",
             return_messages=True,
@@ -41,7 +40,6 @@ class OZMemory(BaseMemory):
 
     Args:
         session_id: LangChain conversation / session identifier.
-        project_id: OpenZync project UUID.
         client: An ``AsyncOpenZync`` client instance.
         memory_key: Key under which memory variables are stored (default
             ``"chat_history"``).
@@ -54,8 +52,9 @@ class OZMemory(BaseMemory):
         max_messages: Maximum number of messages to fetch from the server.
     """
 
+    # ⚠️ BREAKING: project_id removed — the transport resolves the project
+    # from the API key, so the constructor no longer accepts it.
     session_id: str
-    project_id: str
     client: Any  # typed as Any to avoid import issues — must be AsyncOpenZync
     memory_key: str = "chat_history"
     return_messages: bool = True
@@ -70,7 +69,6 @@ class OZMemory(BaseMemory):
         """Create the underlying chat message history after init."""
         self._chat_memory = OZChatMessageHistory(
             session_id=self.session_id,
-            project_id=self.project_id,
             client=self.client,
             max_messages=self.max_messages,
         )
