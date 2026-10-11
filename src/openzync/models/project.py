@@ -68,7 +68,9 @@ class ProjectMemberResponse(BaseModel):
     id: str = Field(..., description="Internal UUID.")
     user_id: str = Field(..., description="User UUID.")
     role: str = Field(..., description="Project role: owner or member.")
-    created_at: str = Field(..., description="ISO-8601 timestamp.")
+    created_at: datetime = Field(
+        ..., description="Membership creation timestamp (UTC)."
+    )
     user: UserResponse | None = Field(
         default=None, description="Nested user, null when the user row is missing."
     )
