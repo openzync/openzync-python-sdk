@@ -38,11 +38,14 @@ class TestSearchClient:
             }
         )
 
-        result = await async_client.search.global_search(query="acme", limit=5)
+        result = await async_client.search.global_search(
+            query="acme", limit=5, sort="recent"
+        )
 
         request = route.calls.last.request
         assert request.url.params["q"] == "acme"
         assert request.url.params["limit"] == "5"
+        assert request.url.params["sort"] == "recent"
         assert isinstance(result, GlobalSearchResponse)
         assert result.query == "acme"
         assert isinstance(result.results[0], GlobalSearchItem)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from openzync._errors import ValidationError
+
 
 class TestGraphClient:
     """Tests for ``AsyncGraphClient``."""
@@ -382,9 +384,9 @@ class TestGraphEdgesBatch:
 
     @pytest.mark.asyncio
     async def test_edges_requires_exactly_one_subject_param(self, async_client):
-        """ValueError when neither or both of subject_id/subject_ids given."""
-        with pytest.raises(ValueError, match="Exactly one"):
+        """ValidationError when neither or both of subject_id/subject_ids given."""
+        with pytest.raises(ValidationError, match="Exactly one"):
             await async_client.graph.edges()
 
-        with pytest.raises(ValueError, match="Exactly one"):
+        with pytest.raises(ValidationError, match="Exactly one"):
             await async_client.graph.edges(subject_id="n1", subject_ids="n2,n3")

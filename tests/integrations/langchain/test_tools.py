@@ -16,6 +16,7 @@ from openzync.integrations.langchain.tools.graph import (
     ListGraphNodesInput,
     ListGraphNodesTool,
 )
+from openzync.models.graph import GraphEdge, GraphNode, GraphNodeDetail
 
 
 @pytest.fixture
@@ -58,14 +59,12 @@ class TestGraphSearchTool:
         assert tool.args_schema == GraphSearchInput
 
     def test_input_schema_valid(self):
-        inp = GraphSearchInput(query="test query", project_id="project-1")
+        inp = GraphSearchInput(query="test query")
         assert inp.query == "test query"
-        assert inp.project_id == "project-1"
 
     def test_input_schema_with_optionals(self):
         inp = GraphSearchInput(
             query="test",
-            project_id="project-1",
             types="facts",
             limit=10,
         )
@@ -79,7 +78,7 @@ class TestGraphSearchTool:
         ]
 
         tool = GraphSearchTool(client=mock_client)
-        result = await tool._arun(query="Alice", project_id="project-1")
+        result = await tool._arun(query="Alice")
 
         assert "Alice works at Acme" in result
         assert "0.950" in result
@@ -89,7 +88,7 @@ class TestGraphSearchTool:
         mock_client.graph.search.return_value = []
 
         tool = GraphSearchTool(client=mock_client)
-        result = await tool._arun(query="nothing", project_id="project-1")
+        result = await tool._arun(query="nothing")
         assert result == "No results found."
 
     def test_run_sync(self, mock_client):
@@ -98,7 +97,7 @@ class TestGraphSearchTool:
             {"content": "sync result", "score": 0.5, "type": "entity"},
         ]
         tool = GraphSearchTool(client=mock_client)
-        result = tool._run(query="test", project_id="project-1")
+        result = tool._run(query="test")
         assert "sync result" in result
 
 
@@ -113,8 +112,6 @@ class TestGraphNodeDetailTool:
     @pytest.mark.asyncio
     async def test_arun_returns_details(self, mock_client):
         """_arun formats node details with edges."""
-        from openzync.models.graph import GraphNode, GraphEdge, GraphNodeDetail
-
         detail = GraphNodeDetail(
             node=GraphNode(
                 id="n1",
@@ -130,16 +127,15 @@ class TestGraphNodeDetailTool:
                     source_id="n1",
                     target_id="n2",
                     type="works_at",
-                    weight=1.0,
+                    properties={},
                     created_at="2026-01-01T00:00:00Z",
-                    metadata={},
                 ),
             ],
         )
         mock_client.graph.node_detail = AsyncMock(return_value=detail)
 
         tool = GraphNodeDetailTool(client=mock_client)
-        result = await tool._arun(project_id="p1", node_id="n1")
+        result = await tool._arun(node_id="n1")
 
         assert "Alice" in result
         assert "Person" in result
@@ -148,8 +144,6 @@ class TestGraphNodeDetailTool:
     @pytest.mark.asyncio
     async def test_arun_without_edges(self, mock_client):
         """_arun handles nodes with no edges."""
-        from openzync.models.graph import GraphNode, GraphNodeDetail
-
         detail = GraphNodeDetail(
             node=GraphNode(
                 id="n2",
@@ -164,15 +158,13 @@ class TestGraphNodeDetailTool:
         mock_client.graph.node_detail = AsyncMock(return_value=detail)
 
         tool = GraphNodeDetailTool(client=mock_client)
-        result = await tool._arun(project_id="p1", node_id="n2")
+        result = await tool._arun(node_id="n2")
 
         assert "Bob" in result
         assert "Relationships:" in result
 
     def test_run_sync(self, mock_client):
         """Sync _run delegates to async."""
-        from openzync.models.graph import GraphNode, GraphNodeDetail
-
         detail = GraphNodeDetail(
             node=GraphNode(
                 id="n1",
@@ -187,7 +179,7 @@ class TestGraphNodeDetailTool:
         mock_client.graph.node_detail = AsyncMock(return_value=detail)
 
         tool = GraphNodeDetailTool(client=mock_client)
-        result = tool._run(project_id="p1", node_id="n1")
+        result = tool._run(node_id="n1")
         assert "Alice" in result
 
 
@@ -202,8 +194,6 @@ class TestListGraphNodesTool:
     @pytest.mark.asyncio
     async def test_arun_lists_nodes(self, mock_client):
         """_arun iterates nodes and formats them."""
-        from openzync.models.graph import GraphNode
-
         mock_node = GraphNode(
             id="n1",
             name="Alice",
@@ -215,7 +205,7 @@ class TestListGraphNodesTool:
         mock_client.graph.nodes = AsyncMock(return_value=AsyncIterableMock([mock_node]))
 
         tool = ListGraphNodesTool(client=mock_client)
-        result = await tool._arun(project_id="p1")
+        result = await tool._arun()
 
         assert "Alice" in result
         assert "(Person)" in result
@@ -226,7 +216,7 @@ class TestListGraphNodesTool:
         mock_client.graph.nodes = AsyncMock(return_value=AsyncIterableMock([]))
 
         tool = ListGraphNodesTool(client=mock_client)
-        result = await tool._arun(project_id="p1")
+        result = await tool._arun()
         assert result == "No nodes found."
 
     @pytest.mark.asyncio
@@ -235,14 +225,12 @@ class TestListGraphNodesTool:
         mock_client.graph.nodes = AsyncMock(return_value=AsyncIterableMock([]))
 
         tool = ListGraphNodesTool(client=mock_client)
-        await tool._arun(project_id="p1", entity_type="Person", limit=10)
+        await tool._arun(entity_type="Person", limit=10)
 
         mock_client.graph.nodes.assert_awaited_once_with(entity_type="Person", limit=10)
 
     def test_run_sync(self, mock_client):
         """Sync _run delegates to async."""
-        from openzync.models.graph import GraphNode
-
         mock_node = GraphNode(
             id="n1",
             name="Alice",
@@ -254,7 +242,7 @@ class TestListGraphNodesTool:
         mock_client.graph.nodes = AsyncMock(return_value=AsyncIterableMock([mock_node]))
 
         tool = ListGraphNodesTool(client=mock_client)
-        result = tool._run(project_id="p1")
+        result = tool._run()
         assert "Alice" in result
 
 
@@ -275,9 +263,7 @@ class TestAddFactsTool:
             {"subject": "Alice", "predicate": "works_at", "object": "Acme"},
             {"subject": "Alice", "predicate": "role", "object": "Engineer"},
         ]
-        result = await tool._arun(
-            project_id="project-1", session_id="session-1", facts=facts
-        )
+        result = await tool._arun(session_id="session-1", facts=facts)
 
         assert "Accepted 2 fact(s)" in result
         assert "job-1" in result
@@ -288,7 +274,7 @@ class TestAddFactsTool:
 
         tool = AddFactsTool(client=mock_client)
         facts = [{"subject": "Alice", "predicate": "likes", "object": "Python"}]
-        await tool._arun(project_id="project-1", session_id="session-1", facts=facts)
+        await tool._arun(session_id="session-1", facts=facts)
 
         # The tool normalizes dicts, adding content/confidence defaults
         mock_client.facts.add.assert_awaited_once()
@@ -311,5 +297,5 @@ class TestAddFactsTool:
         facts = [{"subject": "X", "predicate": "y", "object": "z"}]
 
         tool = AddFactsTool(client=mock_client)
-        result = tool._run(project_id="p1", session_id="session-1", facts=facts)
+        result = tool._run(session_id="session-1", facts=facts)
         assert "Accepted 1 fact(s)" in result

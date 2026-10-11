@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from openzync._errors import ValidationError
 from openzync.models.memory import (
     IngestMemoryResponse,
     Message,
@@ -123,16 +124,31 @@ class TestMemoryClient:
 
     @pytest.mark.asyncio
     async def test_get_context(self, async_client, mock_http, mock_resolve):
-        """GET /context returns context text."""
+        """GET /context returns context text and sends the sort param."""
         expected = {
             "context": "Recent Episodes (1):\n1. Hello world",
             "metadata": {"assembly_time_ms": 5.0, "source_counts": {}},
         }
-        mock_http.get("/v1/projects/p1/context").respond(json=expected)
+        route = mock_http.get("/v1/projects/p1/context").respond(json=expected)
 
-        result = await async_client.memory.get_context(query="hello", limit=10)
+        result = await async_client.memory.get_context(
+            query="hello", limit=10, sort="recent"
+        )
         assert "Hello world" in result.context
         assert result.metadata["assembly_time_ms"] == 5.0
+        assert route.calls.last.request.url.params["sort"] == "recent"
+
+    @pytest.mark.asyncio
+    async def test_get_context_limit_out_of_range_raises_pre_flight(
+        self, async_client, mock_http
+    ):
+        """limit outside 1–100 raises ValidationError before any HTTP call."""
+        calls_before = len(mock_http.calls)
+
+        with pytest.raises(ValidationError, match="limit must be 1–100"):
+            await async_client.memory.get_context(query="hello", limit=101)
+
+        assert len(mock_http.calls) == calls_before
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, async_client, mock_http, mock_resolve):
@@ -155,7 +171,7 @@ class TestMemoryClient:
             json={"detail": "Validation error", "status": 422},
         )
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             await async_client.memory.ingest(messages=[], session_id="s1")
 
     @pytest.mark.asyncio

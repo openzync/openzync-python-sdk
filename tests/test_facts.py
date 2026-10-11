@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from openzync.models.facts import FactBatchResponse, FactResponse, FactTriple
@@ -126,7 +128,7 @@ class TestFactsListRetractHistory:
             b'"reason":"outdated"' in request.content
             or b'"reason": "outdated"' in request.content
         )
-        assert result.invalid_at == "2026-08-24T12:00:00Z"
+        assert result.invalid_at == datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
     @pytest.mark.asyncio
     async def test_retract_fact_without_reason_sends_no_body(
@@ -150,7 +152,7 @@ class TestFactsListRetractHistory:
     @pytest.mark.asyncio
     async def test_fact_history(self, async_client, mock_http, mock_resolve):
         """GET /facts/{id}/history returns fact plus lineage events."""
-        mock_http.get("/v1/projects/p1/facts/f1/history").respond(
+        route = mock_http.get("/v1/projects/p1/facts/f1/history").respond(
             json={
                 "fact": {
                     "id": "f2",
@@ -171,7 +173,10 @@ class TestFactsListRetractHistory:
             }
         )
 
-        result = await async_client.facts.history("f1")
+        result = await async_client.facts.history("f1", limit=25, offset=10)
 
+        request = route.calls.last.request
+        assert request.url.params["limit"] == "25"
+        assert request.url.params["offset"] == "10"
         assert result.fact.id == "f2"
         assert result.events[0].kind == "superseded"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestVersion:
     """Tests for ``_version``."""
@@ -14,24 +16,23 @@ class TestVersion:
         assert len(__version__) > 0
 
     def test_version_fallback_on_import_error(self, monkeypatch):
-        """Fallback to 0.0.0 when importlib.metadata fails."""
+        """RuntimeError (not a silent '0.0.0') when package metadata is missing."""
+        import importlib
+        from importlib.metadata import PackageNotFoundError
+
         import openzync._version as vz
 
-        # Simulate importlib.metadata.version raising an error
         def broken_version(pkg: str) -> str:
-            raise ModuleNotFoundError(f"No module named {pkg}")
+            raise PackageNotFoundError(pkg)
 
         monkeypatch.setattr(
             "importlib.metadata.version",
             broken_version,
         )
 
-        # Re-execute the try/except block
-        import importlib
+        with pytest.raises(RuntimeError, match="metadata not found"):
+            importlib.reload(vz)
 
-        importlib.reload(vz)
-
-        assert vz.__version__ == "0.0.0"
-
-        # Restore by reloading again (monkeypatch auto-restores after test)
+        # Restore the real module state (monkeypatch auto-restores after test)
+        monkeypatch.undo()
         importlib.reload(vz)

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 import respx
 from httpx import Response
 
-from openzync._errors import OpenZyncError
+from openzync._errors import AuthorizationError, OpenZyncError
 from openzync._http import AsyncHTTPTransport
-
 
 TEST_API_KEY = "oz_test_" + "a" * 64
 TEST_BASE_URL = "https://api.openzync.test"
@@ -104,18 +105,32 @@ class TestAsyncHTTPTransport:
                 await transport.request("GET", "/v1/exhaust")
 
     @pytest.mark.asyncio
-    async def test_request_stream(self, transport):
-        """request_stream returns raw httpx.Response."""
-        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
-            mock.get("/v1/stream").respond(
-                status_code=200,
-                text="streamed content",
-            )
+    async def test_request_retry_after_honored_exactly(self, transport, monkeypatch):
+        """Retry-After is honored exactly: 5 → 5.0s; 999999 → capped at 60.0s."""
+        sleeps: list[float] = []
 
-            response = await transport.request_stream("GET", "/v1/stream")
-            assert isinstance(response, Response)
-            assert response.status_code == 200
-            assert await response.aread() == b"streamed content"
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
+            mock.get("/v1/retry-after").side_effect = [
+                Response(503, headers={"Retry-After": "5"}),
+                Response(200, json={"ok": True}),
+            ]
+
+            assert await transport.request("GET", "/v1/retry-after") == {"ok": True}
+            assert sleeps == [5.0]
+
+        with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
+            mock.get("/v1/retry-after-cap").side_effect = [
+                Response(503, headers={"Retry-After": "999999"}),
+                Response(200, json={"ok": True}),
+            ]
+
+            assert await transport.request("GET", "/v1/retry-after-cap") == {"ok": True}
+            assert sleeps == [5.0, 60.0]
 
     @pytest.mark.asyncio
     async def test_request_multipart_success(self, transport):
@@ -245,7 +260,7 @@ class TestAsyncHTTPTransport:
 
         transport._client.request = timeout_request  # type: ignore[method-assign]
         try:
-            with pytest.raises(OpenZyncError, match="timed out after 3 retries"):
+            with pytest.raises(OpenZyncError, match="timed out after 4 attempts"):
                 await transport.request("GET", "/v1/timeout")
             assert call_count[0] == 4  # max_retries + 1
         finally:
@@ -288,13 +303,16 @@ class TestAsyncHTTPTransport:
         transport._client.request = timeout_request  # type: ignore[method-assign]
         transport._wait = no_wait  # type: ignore[method-assign]
         try:
-            # No Idempotency-Key — the POST is not replayed.
-            with pytest.raises(OpenZyncError, match="timed out"):
+            # No Idempotency-Key — the POST is not replayed: fails after
+            # exactly 1 attempt.
+            with pytest.raises(OpenZyncError, match="timed out after 1 attempt"):
                 await transport.request_multipart("POST", "/v1/upload")
             assert call_count[0] == 1
 
             call_count[0] = 0
-            with pytest.raises(OpenZyncError, match="timed out") as exc_info:
+            with pytest.raises(
+                OpenZyncError, match="timed out after 4 attempts"
+            ) as exc_info:
                 await transport.request_multipart(
                     "POST", "/v1/upload", headers={"Idempotency-Key": "k1"}
                 )
@@ -328,12 +346,14 @@ class TestAsyncHTTPTransport:
             }
 
     @pytest.mark.asyncio
-    async def test_resolve_project_id_raises_value_error(self, transport):
-        """resolve_project_id raises ValueError if no project_id in response."""
+    async def test_resolve_project_id_raises_authorization_error(self, transport):
+        """resolve_project_id raises AuthorizationError if no project_id in response."""
         with respx.mock(base_url=TEST_BASE_URL, assert_all_mocked=True) as mock:
             mock.get("/v1/api-key/project-id").respond(
                 status_code=200, json={"not_project_id": "nope"}
             )
 
-            with pytest.raises(ValueError, match="Could not determine project_id"):
+            with pytest.raises(
+                AuthorizationError, match="Could not determine project_id"
+            ):
                 await transport.resolve_project_id()

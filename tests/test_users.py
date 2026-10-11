@@ -38,34 +38,16 @@ class TestUsersClient:
         assert user.permissions == ["project:read", "project:write"]
 
     @pytest.mark.asyncio
-    async def test_create_user_with_permissions(self, async_client, mock_http):
-        """POST /users passes explicit permissions through."""
-        mock_http.post("/v1/users").respond(
-            json={
-                "id": "u1",
-                "external_id": "alice",
-                "name": "Alice",
-                "email": None,
-                "metadata": {},
-                "organization_id": "org-1",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-                "is_deleted": False,
-                "message_count": 0,
-                "fact_count": 0,
-                "session_count": 0,
-                "permissions": ["project:read", "project:write", "members:read"],
-            }
-        )
-
-        user = await async_client.users.create(
-            external_id="alice",
-            name="Alice",
-            permissions=["project:read", "project:write", "members:read"],
-        )
-        assert user.permissions == ["project:read", "project:write", "members:read"]
-        sent = json.loads(mock_http.calls[-1].request.content)
-        assert sent["permissions"] == ["project:read", "project:write", "members:read"]
+    async def test_create_user_with_permissions_raises_type_error(
+        self, async_client, mock_http
+    ):
+        """create() no longer accepts permissions — core silently dropped them."""
+        with pytest.raises(TypeError):
+            await async_client.users.create(
+                external_id="alice",
+                name="Alice",
+                permissions=["project:read"],
+            )
 
     @pytest.mark.asyncio
     async def test_create_user_omits_permissions_when_unset(
@@ -119,7 +101,7 @@ class TestUsersClient:
 
     @pytest.mark.asyncio
     async def test_update_user(self, async_client, mock_http):
-        """PATCH /users/{id} returns updated user."""
+        """PATCH /users/{id} returns updated user; permissions still transmit."""
         user_id = "u1"
         mock_http.patch(f"/v1/users/{user_id}").respond(
             json={
@@ -127,18 +109,26 @@ class TestUsersClient:
                 "external_id": "alice",
                 "name": "Alice Updated",
                 "organization_id": "org-1",
+                "role": "member",
+                "is_pending_invite": False,
                 "created_at": "2026-01-01T00:00:00Z",
                 "updated_at": "2026-01-02T00:00:00Z",
                 "is_deleted": False,
                 "message_count": 0,
                 "fact_count": 0,
                 "session_count": 0,
-                "permissions": ["project:read", "project:write"],
+                "permissions": ["project:read", "project:write", "members:read"],
             }
         )
 
-        user = await async_client.users.update(user_id, name="Alice Updated")
+        user = await async_client.users.update(
+            user_id,
+            name="Alice Updated",
+            permissions=["project:read", "project:write", "members:read"],
+        )
         assert user.name == "Alice Updated"
+        sent = json.loads(mock_http.calls[-1].request.content)
+        assert sent["permissions"] == ["project:read", "project:write", "members:read"]
 
     @pytest.mark.asyncio
     async def test_delete_user(self, async_client, mock_http):
