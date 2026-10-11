@@ -1,8 +1,8 @@
 """Paginated iteration over list endpoints.
 
 OpenZync uses cursor-based pagination for all list endpoints.
-This module provides async and sync iterators that auto-fetch
-subsequent pages as items are consumed.
+``AsyncPaginatedIterator`` is dual-mode: ``async for`` drives it
+inside an event loop, plain ``for`` drives it via ``asyncio.run()``.
 """
 
 from __future__ import annotations
@@ -14,12 +14,19 @@ from openzync._errors import OpenZyncError
 
 
 class AsyncPaginatedIterator:
-    """Async iterator over paginated results.
+    """Iterator over paginated results — async loop or sync drive.
 
-    Usage::
+    Two drive modes share one instance:
 
-        async for user in client.users.list():
-            print(user.name)
+    - ``async for item in client.users.list_iter():`` — inside an
+      already-running event loop (``AsyncOpenZync``).
+    - ``for item in client.users.list_iter():`` — sync drive, each
+      ``__next__`` runs one ``__anext__`` step in a fresh event loop
+      via ``asyncio.run()`` (the sync ``OpenZync`` client).
+
+    ⚠️  Sync iteration inside a running event loop (Jupyter, async
+        apps) fails loud with ``OpenZyncError`` — use ``async for``
+        there instead.
     """
 
     def __init__(
@@ -50,40 +57,27 @@ class AsyncPaginatedIterator:
         self._index += 1
         return item
 
-    async def _fetch_page(self) -> None:
-        result = await self._fetch(self._cursor)
-        self._items = result.get("data", result.get("items", []))
-        self._cursor = result.get("next_cursor")
-        self._has_more = result.get("has_more", False)
-        self._index = 0
+    def __iter__(self) -> AsyncPaginatedIterator:
+        """Return self for plain ``for`` iteration.
 
-
-class SyncPaginatedIterator:
-    """Sync iterator over paginated results.
-
-    Wraps ``AsyncPaginatedIterator`` via ``asyncio.run()``.
-
-    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use ``AsyncOpenZync`` / ``await`` the async iterator instead.
-
-    Usage::
-
-        for user in client.users.list():
-            print(user.name)
-    """
-
-    def __init__(
-        self,
-        fetch_page: Callable[[str | None], Any],
-        limit: int = 50,
-    ) -> None:
-        self._async_iter = AsyncPaginatedIterator(fetch_page, limit)
-        self._run = asyncio.run
-
-    def __iter__(self) -> SyncPaginatedIterator:
+        Returns:
+            This iterator, driven synchronously by ``__next__``.
+        """
         return self
 
     def __next__(self) -> Any:
+        """Return the next item, driving the async step synchronously.
+
+        Runs ``__anext__`` in a fresh event loop via ``asyncio.run()``
+        — the same drive pattern ``_SyncDomainWrapper`` uses for
+        coroutines. Page fetches happen lazily: only exhausted
+        buffers trigger ``self._fetch``.
+
+        Raises:
+            OpenZyncError: If called inside a running event loop —
+                use ``AsyncOpenZync`` / ``async for`` instead.
+            StopIteration: When all pages are exhausted.
+        """
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -91,11 +85,19 @@ class SyncPaginatedIterator:
         else:
             raise OpenZyncError(
                 message=(
-                    "sync client inside running loop — use AsyncOpenZync / await "
-                    "the async iterator (async for ...) instead of the sync client"
+                    "sync iteration inside running loop — use AsyncOpenZync / "
+                    "await the async iterator (async for ...) instead of "
+                    "the sync client"
                 ),
             )
         try:
-            return self._run(self._async_iter.__anext__())
+            return asyncio.run(self.__anext__())
         except StopAsyncIteration:
             raise StopIteration
+
+    async def _fetch_page(self) -> None:
+        result = await self._fetch(self._cursor)
+        self._items = result.get("data", result.get("items", []))
+        self._cursor = result.get("next_cursor")
+        self._has_more = result.get("has_more", False)
+        self._index = 0

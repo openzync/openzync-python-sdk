@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -9,6 +12,8 @@ class ObservationResponse(BaseModel):
     """A single observation surfaced from graph-topology analysis."""
 
     id: str = Field(..., description="UUID primary key.")
+    organization_id: str = Field(..., description="Owning organization.")
+    project_id: str = Field(..., description="Owning project.")
     subject_entity_id: str = Field(
         ..., description="The entity this observation is about."
     )
@@ -23,16 +28,26 @@ class ObservationResponse(BaseModel):
     content: str = Field(
         ..., description="Natural-language description of the observation."
     )
+    supporting_fact_ids: list[str] | None = Field(
+        default=None, description="UUIDs of supporting facts."
+    )
+    supporting_relationship_ids: list[str] | None = Field(
+        default=None, description="UUIDs of supporting graph relationships."
+    )
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score (0.0–1.0)."
     )
-    valid_from: str | None = Field(
+    valid_from: datetime | None = Field(
         default=None, description="Start of temporal validity (UTC)."
     )
-    valid_to: str | None = Field(
+    valid_to: datetime | None = Field(
         default=None, description="End of temporal validity (UTC)."
     )
-    created_at: str = Field(..., description="Row creation timestamp (UTC).")
+    observation_metadata: dict[str, Any] | None = Field(
+        default=None, description="Arbitrary JSONB metadata."
+    )
+    created_at: datetime = Field(..., description="Row creation timestamp (UTC).")
+    updated_at: datetime = Field(..., description="Row last-update timestamp (UTC).")
     subject_entity_name: str | None = Field(
         default=None, description="Resolved subject entity name."
     )

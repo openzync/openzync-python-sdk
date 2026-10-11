@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from openzync.models.facts import FactResponse
@@ -24,6 +26,7 @@ class TestSessionsClient:
                 "message_count": 0,
                 "fact_count": 0,
                 "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
             }
         )
 
@@ -32,6 +35,7 @@ class TestSessionsClient:
         assert session.external_id == "demo"
         assert session.project_id == "p1"
         assert session.created_by == "u1"
+        assert session.updated_at == datetime(2026, 1, 1, tzinfo=UTC)
 
     @pytest.mark.asyncio
     async def test_get_session(self, async_client, mock_http, mock_resolve):
@@ -48,11 +52,13 @@ class TestSessionsClient:
                 "message_count": 0,
                 "fact_count": 0,
                 "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
             }
         )
 
         session = await async_client.sessions.get(session_id=session_id)
         assert session.external_id == "demo"
+        assert session.updated_at == datetime(2026, 1, 1, tzinfo=UTC)
 
     @pytest.mark.asyncio
     async def test_delete_session(self, async_client, mock_http, mock_resolve):
@@ -64,8 +70,8 @@ class TestSessionsClient:
 
     @pytest.mark.asyncio
     async def test_list_sessions(self, async_client, mock_http, mock_resolve):
-        """GET /sessions returns paginated sessions."""
-        mock_http.get("/v1/projects/p1/sessions").respond(
+        """GET /sessions returns paginated sessions and sends include_closed."""
+        route = mock_http.get("/v1/projects/p1/sessions").respond(
             json={
                 "data": [
                     {
@@ -85,9 +91,10 @@ class TestSessionsClient:
             }
         )
 
-        result = await async_client.sessions.list()
+        result = await async_client.sessions.list(include_closed=True)
         assert len(result["data"]) == 1
         assert result["data"][0]["external_id"] == "demo"
+        assert route.calls.last.request.url.params["include_closed"] == "true"
 
     @pytest.mark.asyncio
     async def test_list_sessions_with_cursor(

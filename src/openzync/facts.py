@@ -120,11 +120,19 @@ class AsyncFactsClient:
         )
         return FactResponse(**data)
 
-    async def history(self, fact_id: str) -> FactHistoryResponse:
+    async def history(
+        self,
+        fact_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> FactHistoryResponse:
         """Get a fact plus its invalidation-lineage events (newest first).
 
         Args:
             fact_id: The UUID of the fact whose lineage to fetch.
+            limit: Maximum events per page (1–200).
+            offset: Number of events to skip (offset pagination).
 
         Returns:
             ``FactHistoryResponse`` with the fact and its lineage events.
@@ -133,5 +141,6 @@ class AsyncFactsClient:
         data = await self._http.request(
             "GET",
             f"/v1/projects/{pid}/facts/{fact_id}/history",
+            params={"limit": limit, "offset": offset},
         )
         return FactHistoryResponse(**data)

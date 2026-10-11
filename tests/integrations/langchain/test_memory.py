@@ -26,13 +26,11 @@ class TestOZMemory:
         """Initialise with required args."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             memory_key="history",
             return_messages=True,
         )
         assert memory.session_id == "session-1"
-        assert memory.project_id == "project-1"
         assert memory.memory_key == "history"
         assert memory.return_messages is True
 
@@ -40,7 +38,6 @@ class TestOZMemory:
         """memory_variables returns [memory_key]."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             memory_key="chat_history",
         )
@@ -50,7 +47,6 @@ class TestOZMemory:
         """load_memory_variables returns the memory_key with messages."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             return_messages=True,
         )
@@ -70,7 +66,6 @@ class TestOZMemory:
         """When return_messages=False, returns a string."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             return_messages=False,
         )
@@ -89,7 +84,6 @@ class TestOZMemory:
         """save_context adds Human + AI messages."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         # Seed cache
@@ -110,7 +104,6 @@ class TestOZMemory:
         """save_context uses input_key/output_key when specified."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             input_key="question",
             output_key="answer",
@@ -129,7 +122,6 @@ class TestOZMemory:
         """clear delegates to chat_memory."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         memory._chat_memory._messages = [HumanMessage(content="Hi")]
@@ -145,7 +137,6 @@ class TestOZMemory:
         """get_context delegates to client.memory.get_context."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         mock_client.memory.get_context = AsyncMock(
@@ -173,7 +164,6 @@ class TestOZMemory:
         """Accessing chat_memory before model_post_init raises ValueError."""
         memory = OZMemory.model_construct(
             session_id="s1",
-            project_id="p1",
             client=AsyncMock(),
         )
         # Override _chat_memory to simulate uninitialized state
@@ -185,7 +175,6 @@ class TestOZMemory:
         """save_context auto-detects input key."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         memory._chat_memory._messages = []
@@ -197,7 +186,6 @@ class TestOZMemory:
         """_get_input uses first value when no key matches."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         result = memory._get_input({"other_key": "fallback_val"})
@@ -207,7 +195,6 @@ class TestOZMemory:
         """_get_input falls back to first value when all keys match memory_key."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         result = memory._get_input({"chat_history": "history_val"})
@@ -217,7 +204,6 @@ class TestOZMemory:
         """_get_output uses first value when no key matches."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         result = memory._get_output({"response": "output_val"})
@@ -227,7 +213,6 @@ class TestOZMemory:
         """_get_output falls back to first value when all keys match memory_key."""
         memory = OZMemory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         result = memory._get_output({"chat_history": "hist_out"})

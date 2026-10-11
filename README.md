@@ -53,7 +53,7 @@ client = OpenZync(api_key="...")
 # ── Memory ──
 client.memory.ingest(messages=[...], session_id="session-1")  # always sent as multipart/form-data, even text-only
 client.memory.get_context(query="...")
-client.memory.delete()
+client.memory.delete(confirm="<project-id>")
 
 # ── Facts ──
 client.facts.add(facts=[...], session_id="session-1")
@@ -64,7 +64,7 @@ for node in client.graph.nodes():
 detail = client.graph.node_detail(node_id)
 client.graph.delete_node(node_id)
 for edge in client.graph.edges(subject_id):
-    print(edge.type)
+    print(edge["type"])
 comms = client.graph.communities()
 results = client.graph.search("query")
 

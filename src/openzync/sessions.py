@@ -82,12 +82,15 @@ class AsyncSessionsClient:
         *,
         limit: int = 50,
         cursor: str | None = None,
+        include_closed: bool = False,
     ) -> dict:
         """List sessions for a project with cursor-based pagination.
 
         Args:
             limit: Maximum results per page.
             cursor: Opaque cursor from a previous response.
+            include_closed: When True, include closed sessions.
+                Omitted from the query when False (backend default).
 
         Returns:
             Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
@@ -96,6 +99,8 @@ class AsyncSessionsClient:
         params: dict[str, str | int] = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
+        if include_closed:
+            params["include_closed"] = True
         return await self._http.request(
             "GET",
             f"/v1/projects/{pid}/sessions",

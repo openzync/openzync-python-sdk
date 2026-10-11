@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-from openzync._pagination import AsyncPaginatedIterator, SyncPaginatedIterator
+from openzync._errors import OpenZyncError
+from openzync._pagination import AsyncPaginatedIterator
 
 
 def _make_fetch(pages: list[dict[str, Any]], call_count: list[int] | None = None):
@@ -109,48 +110,42 @@ class TestAsyncPaginatedIterator:
         assert iterator.__aiter__() is iterator
 
 
-class TestSyncPaginatedIterator:
-    """Tests for ``SyncPaginatedIterator``."""
+class TestAsyncPaginatedIteratorSyncDrive:
+    """Sync ``for`` drive of ``AsyncPaginatedIterator`` (via asyncio.run)."""
 
-    def test_single_page(self):
-        """Sync wrapper iterates a single page."""
+    def test_sync_for_across_pages(self):
+        """Plain ``for`` drives the iterator — full page then short page."""
+        call_count = [0]
         fetch = _make_fetch(
             [
-                {"data": [{"id": 1}], "next_cursor": None, "has_more": False},
-            ]
+                {"data": [{"id": 1}, {"id": 2}], "next_cursor": "c2", "has_more": True},
+                {"data": [{"id": 3}], "next_cursor": None, "has_more": False},
+            ],
+            call_count,
         )
-        items = []
-        for item in SyncPaginatedIterator(fetch, limit=50):
-            items.append(item)
-        assert len(items) == 1
 
-    def test_multi_page(self):
-        """Sync wrapper auto-fetches multiple pages."""
+        items = [item["id"] for item in AsyncPaginatedIterator(fetch, limit=2)]
+
+        assert items == [1, 2, 3]
+        assert call_count[0] == 2
+
+    def test_stop_iteration_when_exhausted(self):
+        """``next`` raises StopIteration once all pages are consumed."""
         fetch = _make_fetch(
-            [
-                {"data": [{"id": 1}], "next_cursor": "c2", "has_more": True},
-                {"data": [{"id": 2}], "next_cursor": None, "has_more": False},
-            ]
+            [{"data": [{"id": 1}], "next_cursor": None, "has_more": False}]
         )
-        items = []
-        for item in SyncPaginatedIterator(fetch, limit=50):
-            items.append(item)
-        assert len(items) == 2
+        iterator = iter(AsyncPaginatedIterator(fetch, limit=2))
 
-    def test_empty(self):
-        """Sync wrapper handles empty results."""
-        fetch = _make_fetch(
-            [
-                {"data": [], "next_cursor": None, "has_more": False},
-            ]
-        )
-        items = []
-        for item in SyncPaginatedIterator(fetch, limit=50):
-            items.append(item)
-        assert len(items) == 0
+        assert next(iterator)["id"] == 1
+        with pytest.raises(StopIteration):
+            next(iterator)
 
-    def test_iter_returns_self(self):
-        """__iter__ returns self."""
+    @pytest.mark.asyncio
+    async def test_sync_drive_inside_running_loop_raises(self):
+        """Plain ``for`` inside a running event loop fails loud."""
         fetch = _make_fetch([{"data": [], "next_cursor": None, "has_more": False}])
-        iterator = SyncPaginatedIterator(fetch, limit=50)
-        assert iterator.__iter__() is iterator
+        iterator = AsyncPaginatedIterator(fetch, limit=2)
+
+        with pytest.raises(OpenZyncError, match="sync iteration inside running loop"):
+            for _ in iterator:
+                pass

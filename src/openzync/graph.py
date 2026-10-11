@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from openzync._errors import ValidationError
 from openzync._http import AsyncHTTPTransport
 from openzync._pagination import AsyncPaginatedIterator
 from openzync.models.graph import (
@@ -114,11 +115,12 @@ class AsyncGraphClient:
             limit: Maximum results per page.
 
         Raises:
-            ValueError: If not exactly one of ``subject_id``/``subject_ids``
+            ValidationError: If not exactly one of ``subject_id``/``subject_ids``
                 is provided.
         """
         if (subject_id is None) == (subject_ids is None):
-            raise ValueError(
+            # ⚠️ BREAKING: was ValueError — now inside the OpenZyncError taxonomy
+            raise ValidationError(
                 "Exactly one of 'subject_id' or 'subject_ids' is required."
             )
         pid = await self._http.resolve_project_id()

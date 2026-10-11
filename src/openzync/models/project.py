@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -40,12 +41,16 @@ class ProjectResponse(BaseModel):
     description: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     is_archived: bool = Field(default=False)
+    is_pinned: bool = Field(
+        default=False,
+        description="Whether the requesting user pinned this project.",
+    )
     member_count: int = Field(default=0, ge=0)
     created_by: str | None = Field(
         default=None, description="User UUID who created the project."
     )
-    created_at: str = Field(..., description="ISO-8601 creation timestamp.")
-    updated_at: str = Field(..., description="ISO-8601 update timestamp.")
+    created_at: datetime = Field(..., description="ISO-8601 creation timestamp.")
+    updated_at: datetime = Field(..., description="ISO-8601 update timestamp.")
 
 
 class AddMemberRequest(BaseModel):
@@ -61,7 +66,6 @@ class ProjectMemberResponse(BaseModel):
     """Response for project member endpoints."""
 
     id: str = Field(..., description="Internal UUID.")
-    project_id: str = Field(..., description="Project UUID.")
     user_id: str = Field(..., description="User UUID.")
     role: str = Field(..., description="Project role: owner or member.")
     created_at: str = Field(..., description="ISO-8601 timestamp.")

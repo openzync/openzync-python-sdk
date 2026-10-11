@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -10,7 +10,6 @@ import respx
 from httpx import Response
 
 from openzync.client import AsyncOpenZync, OpenZync
-
 
 TEST_API_KEY = "oz_test_" + "a" * 64
 TEST_BASE_URL = "https://api.openzync.test"

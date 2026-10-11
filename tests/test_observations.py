@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from openzync.models.observation import ObservationListResponse, ObservationResponse
@@ -18,12 +20,15 @@ class TestObservationsClient:
                 "data": [
                     {
                         "id": "o1",
+                        "organization_id": "org-1",
+                        "project_id": "p1",
                         "subject_entity_id": "e1",
                         "related_entity_id": "e2",
                         "observation_type": "co_occurrence",
                         "content": "Alice and Bob frequently co-occur",
                         "confidence": 0.85,
                         "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
                         "subject_entity_name": "Alice",
                         "related_entity_name": "Bob",
                     },
@@ -39,6 +44,9 @@ class TestObservationsClient:
         assert isinstance(result, ObservationListResponse)
         assert isinstance(result.data[0], ObservationResponse)
         assert result.total == 1
+        assert result.data[0].organization_id == "org-1"
+        assert result.data[0].project_id == "p1"
+        assert result.data[0].updated_at == datetime(2026, 1, 1, tzinfo=UTC)
 
     @pytest.mark.asyncio
     async def test_list_observations_with_filters(

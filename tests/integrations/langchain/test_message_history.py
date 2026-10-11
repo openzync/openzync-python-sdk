@@ -11,8 +11,8 @@ from openzync._errors import NotFoundError
 from openzync.client import AsyncOpenZync
 from openzync.integrations.langchain.message_history import (
     OZChatMessageHistory,
-    _oz_message_from_base,
     _base_message_from_oz,
+    _oz_message_from_base,
 )
 from openzync.models.session import SessionMessagesResponse
 
@@ -55,11 +55,9 @@ class TestOZChatMessageHistory:
         """Initialise with required args."""
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         assert history.session_id == "session-1"
-        assert history.project_id == "project-1"
         assert history._messages is None
 
     @pytest.mark.asyncio
@@ -69,7 +67,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         messages = await history.aget_messages()
@@ -78,12 +75,11 @@ class TestOZChatMessageHistory:
     @pytest.mark.asyncio
     async def test_aget_messages_returns_messages(self, mock_client):
         """Return messages from the server."""
-        resp = SessionMessagesResponse(**{"data": SAMPLE_MESSAGES})
+        resp = SessionMessagesResponse(data=SAMPLE_MESSAGES)
         mock_client.sessions.messages.return_value = resp
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         messages = await history.aget_messages()
@@ -102,7 +98,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         await history.aadd_messages([HumanMessage(content="Hi")])
@@ -120,7 +115,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         await history.aadd_messages([HumanMessage(content="Hi")])
@@ -136,7 +130,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         history._messages = [HumanMessage(content="Hi")]  # seed cache
@@ -159,7 +152,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         # Seed cache to avoid network call in _load_messages_if_needed
@@ -172,7 +164,6 @@ class TestOZChatMessageHistory:
         """Messages property returns cached messages."""
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         # Seed cache
@@ -185,7 +176,6 @@ class TestOZChatMessageHistory:
         """Messages property returns a copy, not the internal list."""
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         history._messages = [HumanMessage(content="Hello")]
@@ -202,7 +192,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         msgs = history.messages  # cache is cold — fetches from server
@@ -214,7 +203,6 @@ class TestOZChatMessageHistory:
         """Adding no messages is a no-op."""
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         history._messages = []
@@ -231,7 +219,6 @@ class TestOZChatMessageHistory:
 
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
             max_messages=2,
         )
@@ -257,7 +244,6 @@ class TestOZChatMessageHistory:
         mock_client.memory.ingest = AsyncMock()
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         history._messages = []
@@ -269,7 +255,6 @@ class TestOZChatMessageHistory:
         mock_client.memory.delete = AsyncMock()
         history = OZChatMessageHistory(
             session_id="session-1",
-            project_id="project-1",
             client=mock_client,
         )
         history._messages = [HumanMessage(content="Hi")]

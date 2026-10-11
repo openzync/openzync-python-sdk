@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
+from openzync._errors import ValidationError
 from openzync._http import AsyncHTTPTransport
 from openzync.models.memory import (
     ContextResponse,
     IngestMemoryResponse,
     Message,
 )
+
+# Mirrors core's schemas/sorting.py SearchSort.
+ContextSort = Literal["relevance", "recent"]
 
 
 class AsyncMemoryClient:
@@ -87,25 +92,39 @@ class AsyncMemoryClient:
         limit: int = 20,
         as_of: str | None = None,
         format: str = "text",
+        sort: ContextSort = "relevance",
     ) -> ContextResponse:
         """Assemble a context block for LLM injection.
 
         Args:
             query: Natural-language query describing the context needed.
-            limit: Maximum results per source type.
+            limit: Maximum results per source type (1–100).
             as_of: Optional effective-at timestamp (ISO-8601) — facts valid
                 at this instant are used instead of "now".
             format: Output format — ``"text"`` (plain text) or ``"json"``
                 (JSON-serialised context string).
+            sort: Result order — ``"relevance"`` or ``"recent"``. Part of
+                core's Redis cache key.
 
         Returns:
             ``ContextResponse`` with formatted context text.
+
+        Raises:
+            ValidationError: If ``limit`` is outside 1–100 or ``sort`` is
+                not a known order (core would reject with 422).
         """
+        if limit < 1 or limit > 100:
+            raise ValidationError(
+                f"limit must be 1–100 (core rejects {limit} with 422)"
+            )
+        if sort not in ("relevance", "recent"):
+            raise ValidationError(f"unknown sort order: {sort!r}")
         pid = await self._http.resolve_project_id()
         params: dict[str, str | int] = {
             "query": query,
             "limit": str(limit),
             "format": format,
+            "sort": sort,
         }
         if as_of is not None:
             params["as_of"] = as_of

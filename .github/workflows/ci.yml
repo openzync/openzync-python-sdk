@@ -47,6 +47,30 @@ jobs:
         run: pytest tests/ -v
 
   # ═════════════════════════════════════════════════════════════════════════════
+  # LINT  (ruff: UP+B + format check on owned paths)
+  # ═════════════════════════════════════════════════════════════════════════════
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install "ruff==0.15.16"
+      # note: whole-tree default-rules `ruff check` is a follow-up.
+      # src/openzync/integrations/, src/openzync/_pagination.py, and tests/
+      # carry pre-existing findings (BLE001, PYI, PLC, UP006, ...) owned by
+      # other agents — onboarding those paths is their call.
+      - name: Ruff pyupgrade + bugbear (owned paths)
+        run: ruff check --select UP,B src/openzync/models src/openzync/_http.py src/openzync/_version.py src/openzync/schemas.py src/openzync/__init__.py
+      - name: Ruff format check (owned paths)
+        run: ruff format --check src/openzync/models src/openzync/_http.py src/openzync/_version.py src/openzync/schemas.py src/openzync/__init__.py
+
+  # ═════════════════════════════════════════════════════════════════════════════
   # CHANGELOG CHECK  (PRs only — requires fragment or trivial/skip-changelog label)
   # ═════════════════════════════════════════════════════════════════════════════
   changelog-check:

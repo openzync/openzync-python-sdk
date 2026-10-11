@@ -50,11 +50,9 @@ class TestOZGraphRetriever:
         """Initialise with required args."""
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
             types="episodes,facts",
             k=5,
         )
-        assert retriever.project_id == "project-1"
         assert retriever.types == "episodes,facts"
         assert retriever.k == 5
 
@@ -65,7 +63,6 @@ class TestOZGraphRetriever:
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
             k=5,
         )
         docs = await retriever._aget_relevant_documents("Alice Acme Corp")
@@ -84,7 +81,6 @@ class TestOZGraphRetriever:
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
             score_threshold=0.8,
         )
         docs = await retriever._aget_relevant_documents("Alice")
@@ -100,19 +96,17 @@ class TestOZGraphRetriever:
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
         )
         docs = await retriever._aget_relevant_documents("nothing")
         assert docs == []
 
     @pytest.mark.asyncio
     async def test_passes_correct_params(self, mock_client):
-        """Search is called with the right project_id, query, types, limit."""
+        """Search is called with the right query, types, limit."""
         mock_client.graph.search.return_value = SAMPLE_SEARCH_RESULTS
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
             types="facts",
             k=10,
         )
@@ -128,7 +122,6 @@ class TestOZGraphRetriever:
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
             k=5,
         )
         docs = retriever._get_relevant_documents("Alice Acme Corp")
@@ -149,7 +142,6 @@ class TestOZGraphRetriever:
 
         retriever = OZGraphRetriever(
             client=mock_client,
-            project_id="project-1",
         )
         docs = retriever._get_relevant_documents("test")
         assert docs[0].page_content == "Fallback Name"

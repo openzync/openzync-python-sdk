@@ -112,23 +112,136 @@ class GraphTimeoutError(OpenZyncError):
     message: str = "The graph database operation timed out."
 
 
+class CursorExpiredError(OpenZyncError):
+    """Pagination cursor is malformed, stale, or from an older cursor version."""
+
+    status_code: int = 400
+    code: str = "cursor_expired"
+    message: str = "The pagination cursor is invalid or expired."
+
+
+class GoneError(OpenZyncError):
+    """Resource is gone — used for hard-removed backends (e.g. postgres graph)."""
+
+    status_code: int = 410
+    code: str = "gone"
+    message: str = "The requested resource is gone."
+
+
+class ServiceUnavailableError(OpenZyncError):
+    """A shared infrastructure component is unavailable (cache, DB, graph store)."""
+
+    status_code: int = 503
+    code: str = "service_unavailable"
+    message: str = "A service dependency is unavailable."
+
+
+class GraphBackendUnavailableError(ServiceUnavailableError):
+    """Graph database backend cannot be reached."""
+
+    status_code: int = 503
+    code: str = "graph_backend_unavailable"
+    message: str = "Graph database backend is unavailable."
+
+
+class PIIUnavailableError(ServiceUnavailableError):
+    """PII policy or redaction backend could not be reached (fail-closed)."""
+
+    status_code: int = 503
+    code: str = "pii_unavailable"
+    message: str = "PII policy service is unavailable."
+
+
+class LLMConfigurationError(OpenZyncError):
+    """LLM backend cannot be resolved due to missing or invalid configuration."""
+
+    status_code: int = 502
+    code: str = "llm_configuration_error"
+    message: str = "No LLM backend configured."
+
+
+class EdgeNotFoundError(OpenZyncError):
+    """Requested graph edge does not exist."""
+
+    status_code: int = 404
+    code: str = "edge_not_found"
+    message: str = "The requested edge was not found in the knowledge graph."
+
+
 # ── Error mapping ──────────────────────────────────────────────────────────
 
 STATUS_TO_EXCEPTION: dict[int, type[OpenZyncError]] = {
+    # 400 defaults to ValidationError: core emits `cursor_expired` only for
+    # stale cursors, so a bad request without that code is a generic client
+    # error. CursorExpiredError stays reachable via CODE_TO_EXCEPTION below.
+    400: ValidationError,
     401: AuthenticationError,
     403: AuthorizationError,
     404: NotFoundError,
     409: ConflictError,
+    410: GoneError,
     413: PayloadTooLargeError,
     422: ValidationError,
     429: RateLimitError,
     502: ExternalServiceError,
+    503: ServiceUnavailableError,
     504: GraphTimeoutError,
 }
+
+# Machine-code dispatch table, checked before STATUS_TO_EXCEPTION. Core
+# returns an RFC 7807 body whose machine-readable code identifies the exact
+# failure (see openzync-core/core/exceptions.py for the canonical strings).
+# Several codes share one HTTP status, so status alone cannot select the
+# right subclass — e.g. 404 may be `not_found`, `entity_not_found`, or
+# `edge_not_found`, and 503 may be `service_unavailable`,
+# `graph_backend_unavailable`, or `pii_unavailable`. A matching code always
+# wins over the status map.
+CODE_TO_EXCEPTION: dict[str, type[OpenZyncError]] = {
+    "cursor_expired": CursorExpiredError,
+    "authentication_error": AuthenticationError,
+    "authorization_error": AuthorizationError,
+    "not_found": NotFoundError,
+    "entity_not_found": EntityNotFoundError,
+    "edge_not_found": EdgeNotFoundError,
+    "conflict": ConflictError,
+    "gone": GoneError,
+    "payload_too_large": PayloadTooLargeError,
+    "validation_error": ValidationError,
+    "rate_limit_exceeded": RateLimitError,
+    "external_service_error": ExternalServiceError,
+    "llm_configuration_error": LLMConfigurationError,
+    "service_unavailable": ServiceUnavailableError,
+    "graph_backend_unavailable": GraphBackendUnavailableError,
+    "pii_unavailable": PIIUnavailableError,
+    "graph_timeout": GraphTimeoutError,
+}
+
+
+def _format_validation_errors(errors: list[dict[str, Any]]) -> str:
+    """Flatten a FastAPI ``RequestValidationError`` detail list into one line.
+
+    Args:
+        errors: The ``detail`` list from a FastAPI 422 response, where each
+            entry has ``loc`` (field path) and ``msg`` (failure reason).
+
+    Returns:
+        A single-line message like ``body.name: Field required``.
+    """
+    parts: list[str] = []
+    for err in errors:
+        loc = ".".join(str(p) for p in err.get("loc", ()))
+        msg = err.get("msg", "")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(parts)
 
 
 def raise_on_error(status_code: int, body: dict) -> None:
     """Map an RFC 7807 error response to the appropriate exception.
+
+    Dispatch is code-first: when the body carries a known machine-readable
+    ``code``, its exception wins regardless of HTTP status (several codes
+    share one status). Otherwise the status map applies, or
+    ``OpenZyncError`` as fallback.
 
     Args:
         status_code: HTTP status code.
@@ -137,9 +250,23 @@ def raise_on_error(status_code: int, body: dict) -> None:
     Raises:
         The mapped ``OpenZyncError`` subclass, or ``OpenZyncError`` as fallback.
     """
-    exc_cls = STATUS_TO_EXCEPTION.get(status_code, OpenZyncError)
+    code = body.get("code")
+    if isinstance(code, str) and code in CODE_TO_EXCEPTION:
+        exc_cls = CODE_TO_EXCEPTION[code]
+    else:
+        exc_cls = STATUS_TO_EXCEPTION.get(status_code, OpenZyncError)
+    message = body.get("detail", exc_cls.message)
+    context: dict[str, Any] = {
+        k: v for k, v in body.items() if k not in ("detail", "status")
+    }
+    if isinstance(message, list):
+        # FastAPI RequestValidationError shape: [{"loc": ..., "msg": ...}].
+        # Normalize to one readable line and keep the raw list on the
+        # exception's detail so structured context is not lost.
+        context["errors"] = message
+        message = _format_validation_errors(message) or exc_cls.message
     raise exc_cls(
-        message=body.get("detail", exc_cls.message),
-        detail={k: v for k, v in body.items() if k not in ("detail", "status")},
+        message=message,
+        detail=context,
         status_code=status_code,
     )

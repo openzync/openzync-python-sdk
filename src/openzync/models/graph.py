@@ -46,23 +46,3 @@ class GraphCommunity(BaseModel):
     summary: str = Field(default="", description="Community summary.")
     member_count: int = Field(default=0, ge=0)
     created_at: str | None = Field(default=None)
-
-
-class PaginatedGraphNodes(BaseModel):
-    """Cursor-paginated response for entity node listing."""
-
-    items: list[GraphNode] = Field(..., description="Entity nodes for this page.")
-    next_cursor: str | None = Field(
-        default=None, description="Cursor for the next page."
-    )
-    has_more: bool = Field(default=False, description="Whether more pages exist.")
-
-
-class PaginatedGraphEdges(BaseModel):
-    """Cursor-paginated response for edge listing."""
-
-    items: list[GraphEdge] = Field(..., description="Edges for this page.")
-    next_cursor: str | None = Field(
-        default=None, description="Cursor for the next page."
-    )
-    has_more: bool = Field(default=False, description="Whether more pages exist.")

@@ -37,7 +37,8 @@ class FactTripleInput(BaseModel):
 class AddFactsInput(BaseModel):
     """Input schema for adding facts."""
 
-    project_id: str = Field(..., description="OpenZync project UUID.")
+    # ⚠️ BREAKING: project_id removed — the transport resolves the project
+    # from the API key, so agents must not supply it.
     session_id: str = Field(
         ...,
         description="Session external ID — the fact triples are attributed to this session.",
@@ -64,17 +65,11 @@ class AddFactsTool(BaseTool):
     args_schema: Type[BaseModel] = AddFactsInput
     client: AsyncOpenZync
 
-    def _run(
-        self, project_id: str, session_id: str, facts: list[dict[str, Any]]
-    ) -> str:
+    def _run(self, session_id: str, facts: list[dict[str, Any]]) -> str:
         """Add facts (sync)."""
-        return _run_async(
-            self._arun(project_id=project_id, session_id=session_id, facts=facts)
-        )
+        return _run_async(self._arun(session_id=session_id, facts=facts))
 
-    async def _arun(
-        self, project_id: str, session_id: str, facts: list[dict[str, Any]]
-    ) -> str:
+    async def _arun(self, session_id: str, facts: list[dict[str, Any]]) -> str:
         """Add facts (async)."""
         # Convert dicts to FactTriple-compatible dicts
         normalized: list[dict[str, Any]] = []
