@@ -240,7 +240,6 @@ class TestProjectsClient:
         mock_http.post("/v1/projects/p1/members").respond(
             json={
                 "id": "m1",
-                "project_id": "p1",
                 "user_id": "u2",
                 "role": "member",
                 "created_at": "2026-01-01T00:00:00Z",
@@ -360,7 +359,6 @@ class TestProjectsClient:
         route = mock_http.patch("/v1/projects/p1/members/u2").respond(
             json={
                 "id": "m2",
-                "project_id": "p1",
                 "user_id": "u2",
                 "role": "owner",
                 "created_at": "2026-01-01T00:00:00Z",

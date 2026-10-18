@@ -64,6 +64,22 @@ class ConflictError(OpenZyncError):
     message: str = "The request conflicts with the current state of the resource."
 
 
+class MethodNotAllowedError(OpenZyncError):
+    """HTTP method not supported for this endpoint."""
+
+    status_code: int = 405
+    code: str = "method_not_allowed"
+    message: str = "The HTTP method is not allowed for this endpoint."
+
+
+class InternalServerError(OpenZyncError):
+    """Server-side failure with no more specific mapping."""
+
+    status_code: int = 500
+    code: str = "internal_error"
+    message: str = "The server encountered an unexpected error."
+
+
 class PayloadTooLargeError(OpenZyncError):
     """Request body exceeds the maximum allowed size."""
 
@@ -178,24 +194,30 @@ STATUS_TO_EXCEPTION: dict[int, type[OpenZyncError]] = {
     401: AuthenticationError,
     403: AuthorizationError,
     404: NotFoundError,
+    405: MethodNotAllowedError,
     409: ConflictError,
     410: GoneError,
     413: PayloadTooLargeError,
     422: ValidationError,
     429: RateLimitError,
+    500: InternalServerError,
     502: ExternalServiceError,
     503: ServiceUnavailableError,
-    504: GraphTimeoutError,
+    # No 504 entry: a 504 is GraphTimeoutError ONLY when the body code is
+    # graph_timeout — any other 504 falls through to ServiceUnavailableError
+    # (see raise_on_error), since 504s also come from non-graph paths.
 }
 
-# Machine-code dispatch table, checked before STATUS_TO_EXCEPTION. Core
-# returns an RFC 7807 body whose machine-readable code identifies the exact
-# failure (see openzync-core/core/exceptions.py for the canonical strings).
-# Several codes share one HTTP status, so status alone cannot select the
-# right subclass — e.g. 404 may be `not_found`, `entity_not_found`, or
+# Machine-code dispatch table, checked before STATUS_TO_EXCEPTION. Core's
+# RFC 7807 bodies carry the machine-readable code ONLY inside the `type` URL
+# (`https://errors.openzync.tech/{code}`) — there is no top-level `code`
+# field (see openzync-core/core/exceptions.py::_to_problem_json). Several
+# codes share one HTTP status, so status alone cannot select the right
+# subclass — e.g. 404 may be `not_found`, `entity_not_found`, or
 # `edge_not_found`, and 503 may be `service_unavailable`,
 # `graph_backend_unavailable`, or `pii_unavailable`. A matching code always
 # wins over the status map.
+ERRORS_TYPE_URL_PREFIX = "https://errors.openzync.tech/"
 CODE_TO_EXCEPTION: dict[str, type[OpenZyncError]] = {
     "cursor_expired": CursorExpiredError,
     "authentication_error": AuthenticationError,
@@ -204,6 +226,8 @@ CODE_TO_EXCEPTION: dict[str, type[OpenZyncError]] = {
     "entity_not_found": EntityNotFoundError,
     "edge_not_found": EdgeNotFoundError,
     "conflict": ConflictError,
+    "method_not_allowed": MethodNotAllowedError,
+    "internal_error": InternalServerError,
     "gone": GoneError,
     "payload_too_large": PayloadTooLargeError,
     "validation_error": ValidationError,
@@ -235,13 +259,38 @@ def _format_validation_errors(errors: list[dict[str, Any]]) -> str:
     return "; ".join(parts)
 
 
+def _resolve_code(body: dict) -> str | None:
+    """Extract the machine-readable error code from a problem-json body.
+
+    A real top-level ``code`` field wins (forward-compat if core ever adds
+    one). Otherwise the code is derived from the ``type`` URL — the only
+    place core puts it (``https://errors.openzync.tech/{code}``).
+
+    Args:
+        body: Parsed JSON response body.
+
+    Returns:
+        A code present in ``CODE_TO_EXCEPTION``, or ``None``.
+    """
+    code = body.get("code")
+    if isinstance(code, str) and code in CODE_TO_EXCEPTION:
+        return code
+    type_url = body.get("type")
+    if isinstance(type_url, str) and type_url.startswith(ERRORS_TYPE_URL_PREFIX):
+        derived = type_url.rsplit("/", 1)[-1]
+        if derived in CODE_TO_EXCEPTION:
+            return derived
+    return None
+
+
 def raise_on_error(status_code: int, body: dict) -> None:
     """Map an RFC 7807 error response to the appropriate exception.
 
-    Dispatch is code-first: when the body carries a known machine-readable
-    ``code``, its exception wins regardless of HTTP status (several codes
-    share one status). Otherwise the status map applies, or
-    ``OpenZyncError`` as fallback.
+    Dispatch is code-first: when the body identifies a known machine-readable
+    code — via a top-level ``code`` field or the ``type`` URL
+    (``https://errors.openzync.tech/{code}``) — its exception wins regardless
+    of HTTP status (several codes share one status). Otherwise the status map
+    applies, or ``OpenZyncError`` as fallback.
 
     Args:
         status_code: HTTP status code.
@@ -250,14 +299,23 @@ def raise_on_error(status_code: int, body: dict) -> None:
     Raises:
         The mapped ``OpenZyncError`` subclass, or ``OpenZyncError`` as fallback.
     """
-    code = body.get("code")
-    if isinstance(code, str) and code in CODE_TO_EXCEPTION:
+    code = _resolve_code(body)
+    if code is not None:
         exc_cls = CODE_TO_EXCEPTION[code]
+    elif status_code == 504:
+        # Graph-only: only a graph_timeout code earns GraphTimeoutError.
+        # Any other 504 (proxy, upstream, non-graph path) is a generic
+        # service timeout — typed as ServiceUnavailableError with the
+        # real 504 status preserved on the instance.
+        exc_cls = ServiceUnavailableError
     else:
         exc_cls = STATUS_TO_EXCEPTION.get(status_code, OpenZyncError)
     message = body.get("detail", exc_cls.message)
+    # detail carries structured context only — title/type are RFC 7807
+    # envelope (human label + code URL, already decoded via _resolve_code),
+    # not error context, so they stay out.
     context: dict[str, Any] = {
-        k: v for k, v in body.items() if k not in ("detail", "status")
+        k: v for k, v in body.items() if k not in ("detail", "status", "title", "type")
     }
     if isinstance(message, list):
         # FastAPI RequestValidationError shape: [{"loc": ..., "msg": ...}].

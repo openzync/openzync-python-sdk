@@ -7,7 +7,6 @@ searchable across sessions.
 
 from __future__ import annotations
 
-import asyncio
 import warnings
 from typing import Any
 
@@ -19,7 +18,8 @@ from langchain_core.messages import (
     SystemMessage,
 )
 
-from openzync._errors import NotFoundError, OpenZyncError
+from openzync._errors import NotFoundError
+from openzync._sync import _run
 from openzync.client import AsyncOpenZync
 
 # ── Message conversion helpers ──────────────────────────────────────────────
@@ -53,31 +53,6 @@ def _base_message_from_oz(msg_dict: dict[str, Any]) -> BaseMessage:
     return cls(content=content)
 
 
-def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously via ``asyncio.run()``.
-
-    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use ``AsyncOpenZync`` / ``await`` the async methods
-        (``aget_messages``, ``aadd_messages``, etc.) in async environments.
-
-    Raises:
-        OpenZyncError: If called inside a running event loop.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise OpenZyncError(
-            message=(
-                "sync client inside running loop — use AsyncOpenZync / await "
-                "the async methods (aget_messages, aadd_messages, aclear) "
-                "instead of the sync client"
-            ),
-        )
-    return asyncio.run(coro)
-
-
 # ── OZChatMessageHistory ────────────────────────────────────────────────────
 
 
@@ -109,13 +84,20 @@ class OZChatMessageHistory(BaseChatMessageHistory):
     Args:
         session_id: LangChain conversation identifier.
         client: An ``AsyncOpenZync`` client instance.
-        max_messages: Maximum number of messages to fetch from the server.
+        max_messages: Maximum number of messages to fetch from the server
+            (default 500, matching the backend ``le=500`` cap; larger
+            values are clamped to 500).
 
     .. note::
         Sync methods use ``asyncio.run()`` internally and are **not safe**
         to call inside an existing event loop (Jupyter, async apps).
         Use async methods (``aget_messages``, ``aadd_messages``, ``aclear``)
         in async environments.
+
+    .. note::
+        BREAKING: default ``max_messages`` changed from 1000 to 500 to
+        match the backend ``le=500`` cap — callers requesting >500 now
+        receive 500.
     """
 
     # ⚠️ BREAKING: project_id removed — the transport resolves the project
@@ -125,7 +107,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         session_id: str,
         client: AsyncOpenZync,
         *,
-        max_messages: int = 1000,
+        max_messages: int = 500,
     ) -> None:
         self.session_id = session_id
         self._client = client
@@ -138,14 +120,18 @@ class OZChatMessageHistory(BaseChatMessageHistory):
     def _load_messages_if_needed(self) -> None:
         """Fetch messages from the server if the local cache is cold."""
         if self._messages is None:
-            self._messages = _run_async(self._fetch_messages())
+            self._messages = _run(self._fetch_messages())
 
     async def _fetch_messages(self) -> list[BaseMessage]:
         """Fetch messages from the OpenZync server for the given session."""
         try:
+            # Backend caps limit at le=500 — clamp to avoid 422 on
+            # caller-supplied values; client-side truncation below handles the rest.
+            # Clamp floor at 1 — zero/negative would 422 on backend ge=1.
+            limit = max(1, min(self._max_messages, 500))
             resp = await self._client.sessions.messages(
                 self.session_id,
-                limit=self._max_messages,
+                limit=limit,
             )
             return [_base_message_from_oz(m.model_dump()) for m in resp.data]
         except NotFoundError:
@@ -164,7 +150,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         self._load_messages_if_needed()
         if self._messages is not None:
             self._messages.append(message)
-        _run_async(
+        _run(
             self._client.memory.ingest(
                 messages=[_oz_message_from_base(message)],
                 session_id=self.session_id,
@@ -182,7 +168,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
             messages: LangChain ``BaseMessage`` instances to persist.
             blobs: Optional list of ``(filename, data, mime_type)`` tuples.
         """
-        _run_async(self.aadd_messages(messages, blobs=blobs))
+        _run(self.aadd_messages(messages, blobs=blobs))
 
     def clear(self, confirm: str | None = None) -> None:
         """Clear history.
@@ -203,7 +189,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
                 stacklevel=2,
             )
             return
-        _run_async(self._client.memory.delete(confirm=confirm))
+        _run(self._client.memory.delete(confirm=confirm))
 
     # ── Async interface (primitive) ─────────────────────────────────────
 

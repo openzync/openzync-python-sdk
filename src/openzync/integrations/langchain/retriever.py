@@ -7,13 +7,12 @@ past episodes, facts, and entities.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-from openzync._errors import OpenZyncError
+from openzync._sync import _run
 from openzync.client import AsyncOpenZync
 
 
@@ -72,7 +71,7 @@ class OZGraphRetriever(BaseRetriever):
         Returns:
             List of ``Document`` objects with content and metadata.
         """
-        return _run_async(self._aget_relevant_documents(query, **kwargs))
+        return _run(self._aget_relevant_documents(query, **kwargs))
 
     # ── Async ───────────────────────────────────────────────────────────
 
@@ -100,7 +99,7 @@ class OZGraphRetriever(BaseRetriever):
         documents: list[Document] = []
         for result in results:
             # Apply score threshold filtering
-            score = result.get("score", 0.0)
+            score = result.get("rrf_score", result.get("score", 0.0))
             if self.score_threshold is not None and score < self.score_threshold:
                 continue
 
@@ -118,28 +117,3 @@ class OZGraphRetriever(BaseRetriever):
             documents.append(Document(page_content=content, metadata=metadata))
 
         return documents
-
-
-def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously.
-
-    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use ``AsyncOpenZync`` / ``await`` (``ainvoke`` /
-        ``_aget_relevant_documents``) instead of the sync client.
-
-    Raises:
-        OpenZyncError: If called inside a running event loop — use
-            ``ainvoke``/``_aget_relevant_documents`` instead.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise OpenZyncError(
-            message=(
-                "sync client inside running loop — use AsyncOpenZync / await "
-                "ainvoke instead of the sync client"
-            ),
-        )
-    return asyncio.run(coro)

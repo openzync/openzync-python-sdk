@@ -6,6 +6,7 @@ from openzync._http import AsyncHTTPTransport
 from openzync.models.facts import PaginatedFactsResponse
 from openzync.models.session import (
     SessionCreateRequest,
+    SessionListResponse,
     SessionMessagesResponse,
     SessionResponse,
 )
@@ -83,8 +84,11 @@ class AsyncSessionsClient:
         limit: int = 50,
         cursor: str | None = None,
         include_closed: bool = False,
-    ) -> dict:
+    ) -> SessionListResponse:
         """List sessions for a project with cursor-based pagination.
+
+        BREAKING: returns ``SessionListResponse`` — use ``result.data``,
+        not ``result["data"]``.
 
         Args:
             limit: Maximum results per page.
@@ -93,7 +97,7 @@ class AsyncSessionsClient:
                 Omitted from the query when False (backend default).
 
         Returns:
-            Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
+            ``SessionListResponse`` with sessions, next cursor, and has_more.
         """
         pid = await self._http.resolve_project_id()
         params: dict[str, str | int] = {"limit": limit}
@@ -101,11 +105,12 @@ class AsyncSessionsClient:
             params["cursor"] = cursor
         if include_closed:
             params["include_closed"] = True
-        return await self._http.request(
+        data = await self._http.request(
             "GET",
             f"/v1/projects/{pid}/sessions",
             params=params,
         )
+        return SessionListResponse(**data)
 
     async def messages(
         self,

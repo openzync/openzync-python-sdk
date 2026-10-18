@@ -7,10 +7,9 @@ inside an event loop, plain ``for`` drives it via ``asyncio.run()``.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Callable
 
-from openzync._errors import OpenZyncError
+from openzync._sync import _run
 
 
 class AsyncPaginatedIterator:
@@ -79,25 +78,27 @@ class AsyncPaginatedIterator:
             StopIteration: When all pages are exhausted.
         """
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            pass
-        else:
-            raise OpenZyncError(
-                message=(
+            return _run(
+                self.__anext__(),
+                loop_message=(
                     "sync iteration inside running loop — use AsyncOpenZync / "
                     "await the async iterator (async for ...) instead of "
                     "the sync client"
                 ),
             )
-        try:
-            return asyncio.run(self.__anext__())
         except StopAsyncIteration:
             raise StopIteration
 
     async def _fetch_page(self) -> None:
         result = await self._fetch(self._cursor)
-        self._items = result.get("data", result.get("items", []))
-        self._cursor = result.get("next_cursor")
-        self._has_more = result.get("has_more", False)
+        if isinstance(result, dict):
+            self._items = result.get("data", result.get("items", []))
+            self._cursor = result.get("next_cursor")
+            self._has_more = result.get("has_more", False)
+        else:
+            # Pydantic list response (e.g. SessionListResponse) — the
+            # typed replacement for the old bare-dict list payloads.
+            self._items = list(getattr(result, "data", []))
+            self._cursor = getattr(result, "next_cursor", None)
+            self._has_more = getattr(result, "has_more", False)
         self._index = 0

@@ -6,13 +6,12 @@ system — adding structured fact triples to a project's knowledge graph.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, List, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from openzync._errors import OpenZyncError
+from openzync._sync import _run
 from openzync.client import AsyncOpenZync
 
 
@@ -67,7 +66,7 @@ class AddFactsTool(BaseTool):
 
     def _run(self, session_id: str, facts: list[dict[str, Any]]) -> str:
         """Add facts (sync)."""
-        return _run_async(self._arun(session_id=session_id, facts=facts))
+        return _run(self._arun(session_id=session_id, facts=facts))
 
     async def _arun(self, session_id: str, facts: list[dict[str, Any]]) -> str:
         """Add facts (async)."""
@@ -87,27 +86,3 @@ class AddFactsTool(BaseTool):
         result = await self.client.facts.add(normalized, session_id=session_id)
         return f"Accepted {result.accepted_count} fact(s) (job_id: {result.job_id})."
 
-
-def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously.
-
-    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use ``AsyncOpenZync`` / ``await`` the ``_arun`` async entrypoint
-        instead of the sync client.
-
-    Raises:
-        OpenZyncError: If called inside a running event loop — use the
-            ``_arun`` async entrypoint instead.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise OpenZyncError(
-            message=(
-                "sync client inside running loop — use AsyncOpenZync / await "
-                "_arun instead of the sync client"
-            ),
-        )
-    return asyncio.run(coro)

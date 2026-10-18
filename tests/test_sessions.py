@@ -79,7 +79,6 @@ class TestSessionsClient:
                         "project_id": "p1",
                         "created_by": "u1",
                         "external_id": "demo",
-                        "metadata": {},
                         "is_active": True,
                         "message_count": 2,
                         "fact_count": 0,
@@ -92,8 +91,9 @@ class TestSessionsClient:
         )
 
         result = await async_client.sessions.list(include_closed=True)
-        assert len(result["data"]) == 1
-        assert result["data"][0]["external_id"] == "demo"
+        assert len(result.data) == 1
+        assert result.data[0].id == "s1"
+        assert result.data[0].external_id == "demo"
         assert route.calls.last.request.url.params["include_closed"] == "true"
 
     @pytest.mark.asyncio
@@ -101,7 +101,7 @@ class TestSessionsClient:
         self, async_client, mock_http, mock_resolve
     ):
         """GET /sessions passes cursor param."""
-        mock_http.get("/v1/projects/p1/sessions").respond(
+        route = mock_http.get("/v1/projects/p1/sessions").respond(
             json={
                 "data": [],
                 "next_cursor": "next-page",
@@ -110,7 +110,10 @@ class TestSessionsClient:
         )
 
         result = await async_client.sessions.list(cursor="abc")
-        assert result["has_more"] is True
+        assert result.data == []
+        assert result.next_cursor == "next-page"
+        assert result.has_more is True
+        assert route.calls.last.request.url.params["cursor"] == "abc"
 
     @pytest.mark.asyncio
     async def test_get_messages(self, async_client, mock_http, mock_resolve):

@@ -6,13 +6,12 @@ graph — searching, listing nodes, and retrieving node details.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from openzync._errors import OpenZyncError
+from openzync._sync import _run
 from openzync.client import AsyncOpenZync
 
 # ── Input schemas ───────────────────────────────────────────────────────────
@@ -84,7 +83,7 @@ class GraphSearchTool(BaseTool):
         Returns:
             Formatted search results string.
         """
-        return _run_async(self._arun(query, types=types, limit=limit))
+        return _run(self._arun(query, types=types, limit=limit))
 
     async def _arun(
         self,
@@ -124,7 +123,7 @@ class GraphNodeDetailTool(BaseTool):
 
     def _run(self, node_id: str) -> str:
         """Retrieve node details (sync)."""
-        return _run_async(self._arun(node_id=node_id))
+        return _run(self._arun(node_id=node_id))
 
     async def _arun(self, node_id: str) -> str:
         """Retrieve node details (async)."""
@@ -157,7 +156,7 @@ class ListGraphNodesTool(BaseTool):
         limit: int | None = None,
     ) -> str:
         """List nodes (sync)."""
-        return _run_async(self._arun(entity_type=entity_type, limit=limit))
+        return _run(self._arun(entity_type=entity_type, limit=limit))
 
     async def _arun(
         self,
@@ -176,27 +175,3 @@ class ListGraphNodesTool(BaseTool):
             return "No nodes found."
         return "\n".join(nodes)
 
-
-def _run_async(coro: Any) -> Any:
-    """Run an async coroutine synchronously.
-
-    ⚠️  Not safe inside a running event loop (Jupyter, async apps).
-        Use ``AsyncOpenZync`` / ``await`` the ``_arun`` async entrypoint
-        instead of the sync client.
-
-    Raises:
-        OpenZyncError: If called inside a running event loop — use the
-            ``_arun`` async entrypoint instead.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise OpenZyncError(
-            message=(
-                "sync client inside running loop — use AsyncOpenZync / await "
-                "_arun instead of the sync client"
-            ),
-        )
-    return asyncio.run(coro)
