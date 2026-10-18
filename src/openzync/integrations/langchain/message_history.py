@@ -109,13 +109,20 @@ class OZChatMessageHistory(BaseChatMessageHistory):
     Args:
         session_id: LangChain conversation identifier.
         client: An ``AsyncOpenZync`` client instance.
-        max_messages: Maximum number of messages to fetch from the server.
+        max_messages: Maximum number of messages to fetch from the server
+            (default 500, matching the backend ``le=500`` cap; larger
+            values are clamped to 500).
 
     .. note::
         Sync methods use ``asyncio.run()`` internally and are **not safe**
         to call inside an existing event loop (Jupyter, async apps).
         Use async methods (``aget_messages``, ``aadd_messages``, ``aclear``)
         in async environments.
+
+    .. note::
+        BREAKING: default ``max_messages`` changed from 1000 to 500 to
+        match the backend ``le=500`` cap — callers requesting >500 now
+        receive 500.
     """
 
     # ⚠️ BREAKING: project_id removed — the transport resolves the project
@@ -125,7 +132,7 @@ class OZChatMessageHistory(BaseChatMessageHistory):
         session_id: str,
         client: AsyncOpenZync,
         *,
-        max_messages: int = 1000,
+        max_messages: int = 500,
     ) -> None:
         self.session_id = session_id
         self._client = client
@@ -143,9 +150,13 @@ class OZChatMessageHistory(BaseChatMessageHistory):
     async def _fetch_messages(self) -> list[BaseMessage]:
         """Fetch messages from the OpenZync server for the given session."""
         try:
+            # Backend caps limit at le=500 — clamp to avoid 422 on
+            # caller-supplied values; client-side truncation below handles the rest.
+            # Clamp floor at 1 — zero/negative would 422 on backend ge=1.
+            limit = max(1, min(self._max_messages, 500))
             resp = await self._client.sessions.messages(
                 self.session_id,
-                limit=self._max_messages,
+                limit=limit,
             )
             return [_base_message_from_oz(m.model_dump()) for m in resp.data]
         except NotFoundError:

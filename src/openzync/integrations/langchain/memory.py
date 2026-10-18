@@ -49,7 +49,13 @@ class OZMemory(BaseMemory):
             not provided.
         output_key: Optional key for the output variable. Auto-detected if
             not provided.
-        max_messages: Maximum number of messages to fetch from the server.
+        max_messages: Maximum number of messages to fetch from the server
+            (default 500, matching the backend ``le=500`` cap).
+
+    .. note::
+        BREAKING: default ``max_messages`` changed from 1000 to 500 to
+        match the backend ``le=500`` cap — callers requesting >500 now
+        receive 500.
     """
 
     # ⚠️ BREAKING: project_id removed — the transport resolves the project
@@ -60,7 +66,7 @@ class OZMemory(BaseMemory):
     return_messages: bool = True
     input_key: str | None = None
     output_key: str | None = None
-    max_messages: int = 1000
+    max_messages: int = 500
 
     # Internal — populated in model_post_init
     _chat_memory: OZChatMessageHistory | None = None
