@@ -67,3 +67,15 @@ class UserResponse(BaseModel):
         ...,
         description="Effective permission grants. Empty array = full access (admin).",
     )
+
+
+class UserListResponse(BaseModel):
+    """Paginated response for ``GET /v1/users``.
+
+    BREAKING: ``AsyncUsersClient.list`` returns this model — callers
+    doing ``result["data"]`` must move to ``result.data``.
+    """
+
+    data: list[UserResponse] = Field(..., description="Users for the current page.")
+    next_cursor: str | None = Field(default=None)
+    has_more: bool = Field(default=False)

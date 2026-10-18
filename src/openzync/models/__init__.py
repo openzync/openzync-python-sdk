@@ -47,11 +47,13 @@ from openzync.models.schema import (
 from openzync.models.search import GlobalSearchItem, GlobalSearchResponse
 from openzync.models.session import (
     SessionCreateRequest,
+    SessionListResponse,
     SessionMessagesResponse,
     SessionResponse,
 )
 from openzync.models.user import (
     UserCreateRequest,
+    UserListResponse,
     UserResponse,
     UserUpdateRequest,
 )
@@ -85,12 +87,14 @@ __all__ = [
     "SchemaResponse",
     "SchemaTemplateResponse",
     "SessionCreateRequest",
+    "SessionListResponse",
     "SessionMessagesResponse",
     "SessionResponse",
     "StructuredExtractionListResponse",
     "StructuredExtractionResponse",
     "UpdateProjectRequest",
     "UserCreateRequest",
+    "UserListResponse",
     "UserResponse",
     "UserUpdateRequest",
 ]

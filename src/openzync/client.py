@@ -16,8 +16,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from openzync._errors import OpenZyncError
 from openzync._http import AsyncHTTPTransport
+from openzync._sync import _run
 from openzync.classifications import AsyncClassificationsClient
 from openzync.facts import AsyncFactsClient
 from openzync.graph import AsyncGraphClient
@@ -121,39 +121,11 @@ class OpenZync:
 
     def close(self) -> None:
         """Close the underlying HTTP connection pool."""
-        _fail_loud_if_running_loop()
-        asyncio.run(self._async.close())
-
-
-def _fail_loud_if_running_loop() -> None:
-    """Raise if called inside a running event loop.
-
-    The sync client drives coroutines via ``asyncio.run()``, which cannot
-    run inside an existing loop — surfacing ``RuntimeError`` here would
-    obscure the fix. Fail loud with the actionable alternative instead.
-
-    ⚠️  Do not call sync client methods inside a running event loop
-        (Jupyter, async web handlers, LangChain async paths).
-        Use ``AsyncOpenZync`` with ``await`` instead.
-
-    Raises:
-        OpenZyncError: If an event loop is already running in this thread.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    raise OpenZyncError(
-        message=(
-            "sync client inside running loop — use AsyncOpenZync / await "
-            "the async client (e.g. await client.memory.ingest(...)) "
-            "instead of the sync client"
-        ),
-    )
+        _run(self._async.close())
 
 
 class _SyncDomainWrapper:
-    """Wraps an async domain client, calling each method via ``asyncio.run()``.
+    """Wraps an async domain client, calling each method via :func:`_run`.
 
     ⚠️  Not safe inside a running event loop — use ``AsyncOpenZync`` /
         ``await`` instead. Every sync call fails loud with ``OpenZyncError``
@@ -169,8 +141,7 @@ class _SyncDomainWrapper:
         if asyncio.iscoroutinefunction(attr):
 
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                _fail_loud_if_running_loop()
-                return asyncio.run(attr(*args, **kwargs))
+                return _run(attr(*args, **kwargs))
 
             return sync_wrapper
 

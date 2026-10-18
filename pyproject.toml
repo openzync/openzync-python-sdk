@@ -34,6 +34,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
     "respx>=0.22.0",
     "langchain-core>=0.3.0,<0.4.0",
     "towncrier>=24",
@@ -61,6 +62,8 @@ packages = ["src/openzync"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# ratchet: raise toward 100 as coverage improves
+addopts = "--cov=openzync --cov-report=term-missing --cov-fail-under=95"
 
 [tool.towncrier]
 directory = "changelog.d"

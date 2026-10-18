@@ -64,6 +64,22 @@ class ConflictError(OpenZyncError):
     message: str = "The request conflicts with the current state of the resource."
 
 
+class MethodNotAllowedError(OpenZyncError):
+    """HTTP method not supported for this endpoint."""
+
+    status_code: int = 405
+    code: str = "method_not_allowed"
+    message: str = "The HTTP method is not allowed for this endpoint."
+
+
+class InternalServerError(OpenZyncError):
+    """Server-side failure with no more specific mapping."""
+
+    status_code: int = 500
+    code: str = "internal_error"
+    message: str = "The server encountered an unexpected error."
+
+
 class PayloadTooLargeError(OpenZyncError):
     """Request body exceeds the maximum allowed size."""
 
@@ -178,14 +194,18 @@ STATUS_TO_EXCEPTION: dict[int, type[OpenZyncError]] = {
     401: AuthenticationError,
     403: AuthorizationError,
     404: NotFoundError,
+    405: MethodNotAllowedError,
     409: ConflictError,
     410: GoneError,
     413: PayloadTooLargeError,
     422: ValidationError,
     429: RateLimitError,
+    500: InternalServerError,
     502: ExternalServiceError,
     503: ServiceUnavailableError,
-    504: GraphTimeoutError,
+    # No 504 entry: a 504 is GraphTimeoutError ONLY when the body code is
+    # graph_timeout — any other 504 falls through to ServiceUnavailableError
+    # (see raise_on_error), since 504s also come from non-graph paths.
 }
 
 # Machine-code dispatch table, checked before STATUS_TO_EXCEPTION. Core's
@@ -206,6 +226,8 @@ CODE_TO_EXCEPTION: dict[str, type[OpenZyncError]] = {
     "entity_not_found": EntityNotFoundError,
     "edge_not_found": EdgeNotFoundError,
     "conflict": ConflictError,
+    "method_not_allowed": MethodNotAllowedError,
+    "internal_error": InternalServerError,
     "gone": GoneError,
     "payload_too_large": PayloadTooLargeError,
     "validation_error": ValidationError,
@@ -280,11 +302,20 @@ def raise_on_error(status_code: int, body: dict) -> None:
     code = _resolve_code(body)
     if code is not None:
         exc_cls = CODE_TO_EXCEPTION[code]
+    elif status_code == 504:
+        # Graph-only: only a graph_timeout code earns GraphTimeoutError.
+        # Any other 504 (proxy, upstream, non-graph path) is a generic
+        # service timeout — typed as ServiceUnavailableError with the
+        # real 504 status preserved on the instance.
+        exc_cls = ServiceUnavailableError
     else:
         exc_cls = STATUS_TO_EXCEPTION.get(status_code, OpenZyncError)
     message = body.get("detail", exc_cls.message)
+    # detail carries structured context only — title/type are RFC 7807
+    # envelope (human label + code URL, already decoded via _resolve_code),
+    # not error context, so they stay out.
     context: dict[str, Any] = {
-        k: v for k, v in body.items() if k not in ("detail", "status")
+        k: v for k, v in body.items() if k not in ("detail", "status", "title", "type")
     }
     if isinstance(message, list):
         # FastAPI RequestValidationError shape: [{"loc": ..., "msg": ...}].

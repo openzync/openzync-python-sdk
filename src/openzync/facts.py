@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from openzync._errors import ValidationError
 from openzync._http import AsyncHTTPTransport
 from openzync.models.facts import (
     FactBatchResponse,
@@ -69,6 +70,7 @@ class AsyncFactsClient:
         as_of: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        cursor: str | None = None,
     ) -> PaginatedFactsResponse:
         """List facts valid at a point in time.
 
@@ -78,13 +80,23 @@ class AsyncFactsClient:
         Args:
             as_of: Optional effective-at timestamp (ISO-8601). Defaults to now.
             limit: Maximum facts per page (1–200).
-            offset: Number of facts to skip (offset pagination).
+            offset: Number of facts to skip (offset pagination). Ignored
+                when ``cursor`` is set.
+            cursor: Opaque offset-encoded string from a previous response
+                (``next_cursor`` is ``str(offset + limit)``). Translated to
+                ``offset`` server-side; when set, ``offset`` is ignored.
 
         Returns:
             ``PaginatedFactsResponse`` with facts, next cursor, and has_more.
         """
         pid = await self._http.resolve_project_id()
-        params: dict[str, str | int] = {"limit": limit, "offset": offset}
+        # Backend accepts only `offset`; next_cursor is str(offset + limit),
+        # so the cursor IS an offset-encoded string — translate, don't pass through.
+        params: dict[str, str | int] = {"limit": limit}
+        try:
+            params["offset"] = int(cursor) if cursor is not None else offset
+        except (ValueError, TypeError):
+            raise ValidationError(f"Invalid cursor: {cursor!r}") from None
         if as_of is not None:
             params["as_of"] = as_of
         data = await self._http.request(
@@ -112,7 +124,7 @@ class AsyncFactsClient:
             The retracted fact (or the unchanged fact if already closed).
         """
         pid = await self._http.resolve_project_id()
-        body = {"reason": reason} if reason is not None else None
+        body = {"reason": reason if reason is not None else "retracted via SDK"}
         data = await self._http.request(
             "POST",
             f"/v1/projects/{pid}/facts/{fact_id}/retract",

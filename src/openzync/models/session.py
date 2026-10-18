@@ -79,3 +79,15 @@ class SessionMessagesResponse(BaseModel):
     data: list[MessageItem] = Field(..., description="List of messages.")
     next_cursor: str | None = Field(default=None)
     has_more: bool = Field(default=False)
+
+
+class SessionListResponse(BaseModel):
+    """Paginated response for ``GET /v1/projects/{project_id}/sessions``.
+
+    BREAKING: ``AsyncSessionsClient.list`` returns this model — callers
+    doing ``result["data"]`` must move to ``result.data``.
+    """
+
+    data: list[SessionResponse] = Field(..., description="Sessions for the current page.")
+    next_cursor: str | None = Field(default=None)
+    has_more: bool = Field(default=False)

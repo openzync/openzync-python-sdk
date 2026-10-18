@@ -6,6 +6,7 @@ from openzync._http import AsyncHTTPTransport
 from openzync._pagination import AsyncPaginatedIterator
 from openzync.models.user import (
     UserCreateRequest,
+    UserListResponse,
     UserResponse,
     UserUpdateRequest,
 )
@@ -136,20 +137,24 @@ class AsyncUsersClient:
         *,
         limit: int = 50,
         cursor: str | None = None,
-    ) -> dict:
+    ) -> UserListResponse:
         """List users with cursor-based pagination.
+
+        BREAKING: returns ``UserListResponse`` — use ``result.data``,
+        not ``result["data"]``.
 
         Args:
             limit: Maximum results per page.
             cursor: Opaque cursor from a previous response.
 
         Returns:
-            Dict with ``data``, ``next_cursor``, and ``has_more`` keys.
+            ``UserListResponse`` with users, next cursor, and has_more.
         """
         params: dict[str, str | int] = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        return await self._http.request("GET", "/v1/users", params=params)
+        data = await self._http.request("GET", "/v1/users", params=params)
+        return UserListResponse(**data)
 
     def list_iter(self, *, limit: int = 50) -> AsyncPaginatedIterator:
         """Iterate over all users with auto-pagination.
