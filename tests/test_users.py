@@ -163,12 +163,13 @@ class TestUsersClient:
         )
 
         result = await async_client.users.list()
-        assert len(result["data"]) == 1
+        assert len(result.data) == 1
+        assert result.data[0].external_id == "alice"
 
     @pytest.mark.asyncio
     async def test_list_users_with_cursor(self, async_client, mock_http):
         """GET /users passes cursor param."""
-        mock_http.get("/v1/users").respond(
+        route = mock_http.get("/v1/users").respond(
             json={
                 "data": [],
                 "next_cursor": None,
@@ -177,7 +178,8 @@ class TestUsersClient:
         )
 
         result = await async_client.users.list(cursor="abc")
-        assert len(result["data"]) == 0
+        assert len(result.data) == 0
+        assert route.calls.last.request.url.params["cursor"] == "abc"
 
     @pytest.mark.asyncio
     async def test_list_iter(self, async_client, mock_http):
@@ -208,4 +210,4 @@ class TestUsersClient:
         async for user in async_client.users.list_iter():
             users.append(user)
         assert len(users) == 1
-        assert users[0]["external_id"] == "alice"
+        assert users[0].external_id == "alice"

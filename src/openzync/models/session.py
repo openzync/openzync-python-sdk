@@ -47,6 +47,23 @@ class SessionResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last activity timestamp (UTC).")
 
 
+class SessionListItem(BaseModel):
+    """Lightweight session representation for list endpoints.
+
+    Excludes ``metadata`` and ``updated_at`` to keep list responses compact.
+    Use ``SessionResponse`` (single-session GET) for full details.
+    """
+
+    id: str = Field(..., description="Internal UUID.")
+    project_id: str = Field(..., description="Owning project UUID.")
+    created_by: str = Field(..., description="User UUID who created the session.")
+    external_id: str = Field(..., description="Caller-defined identifier.")
+    is_active: bool = Field(default=True)
+    message_count: int = Field(default=0)
+    fact_count: int = Field(default=0)
+    created_at: datetime = Field(..., description="ISO-8601 creation timestamp.")
+
+
 class SessionMessageBlob(BaseModel):
     """A blob attachment referenced in a message response."""
 
@@ -85,9 +102,11 @@ class SessionListResponse(BaseModel):
     """Paginated response for ``GET /v1/projects/{project_id}/sessions``.
 
     BREAKING: ``AsyncSessionsClient.list`` returns this model — callers
-    doing ``result["data"]`` must move to ``result.data``.
+    doing ``result["data"]`` must move to ``result.data``. Items are
+    ``SessionListItem`` (compact: no ``metadata``/``updated_at``); use
+    ``SessionResponse`` (``get()``) for full details.
     """
 
-    data: list[SessionResponse] = Field(..., description="Sessions for the current page.")
+    data: list[SessionListItem] = Field(..., description="Sessions for the current page.")
     next_cursor: str | None = Field(default=None)
     has_more: bool = Field(default=False)

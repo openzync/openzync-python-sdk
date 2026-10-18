@@ -47,6 +47,7 @@ from openzync.models.schema import (
 from openzync.models.search import GlobalSearchItem, GlobalSearchResponse
 from openzync.models.session import (
     SessionCreateRequest,
+    SessionListItem,
     SessionListResponse,
     SessionMessagesResponse,
     SessionResponse,
@@ -87,6 +88,7 @@ __all__ = [
     "SchemaResponse",
     "SchemaTemplateResponse",
     "SessionCreateRequest",
+    "SessionListItem",
     "SessionListResponse",
     "SessionMessagesResponse",
     "SessionResponse",

@@ -131,10 +131,10 @@ class TestFactsListRetractHistory:
         assert result.invalid_at == datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
     @pytest.mark.asyncio
-    async def test_retract_fact_without_reason_sends_no_body(
+    async def test_retract_fact_without_reason_sends_default_reason(
         self, async_client, mock_http, mock_resolve
     ):
-        """POST /facts/{id}/retract omits the body when no reason given."""
+        """POST /facts/{id}/retract sends default reason when none given."""
         route = mock_http.post("/v1/projects/p1/facts/f1/retract").respond(
             json={
                 "id": "f1",
@@ -146,8 +146,7 @@ class TestFactsListRetractHistory:
         await async_client.facts.retract("f1")
 
         request = route.calls.last.request
-        # httpx drops json=None entirely — the retract POST carries no body.
-        assert request.read() == b""
+        assert request.content == b'{"reason":"retracted via SDK"}'
 
     @pytest.mark.asyncio
     async def test_fact_history(self, async_client, mock_http, mock_resolve):

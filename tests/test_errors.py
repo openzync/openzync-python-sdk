@@ -71,7 +71,15 @@ class TestErrorMapping:
 
     def test_504_raises_graph_timeout_error(self):
         with pytest.raises(GraphTimeoutError):
-            raise_on_error(504, {"detail": "Graph timeout"})
+            raise_on_error(
+                504,
+                {
+                    "type": "https://errors.openzync.tech/graph_timeout",
+                    "detail": "Graph timeout",
+                },
+            )
+        with pytest.raises(ServiceUnavailableError):
+            raise_on_error(504, {"detail": "Upstream timeout"})
 
     def test_unknown_status_falls_back(self):
         with pytest.raises(OpenZyncError):
