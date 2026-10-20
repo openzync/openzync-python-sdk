@@ -112,6 +112,33 @@ class ExternalServiceError(OpenZyncError):
     message: str = "An external service error occurred."
 
 
+class TransportError(OpenZyncError):
+    """The request never reached the API, or the response could not be read.
+
+    Raised for connection failures (refused, DNS, reset) and protocol
+    errors — no HTTP response was received, so there is no status code
+    from the API to report.  This is the counterpart of
+    :class:`ExternalServiceError`: that one means the API *answered* with
+    a 502, this one means the API never answered at all.
+    """
+
+    status_code: int = 503
+    code: str = "transport_error"
+    message: str = "The request could not reach the OpenZync API."
+
+
+class RequestTimeoutError(TransportError):
+    """The request timed out (connect, read, write, or pool timeout).
+
+    A timeout is a distinct, retryable case within the transport family,
+    so it keeps its own type and its own 504 status.
+    """
+
+    status_code: int = 504
+    code: str = "request_timeout"
+    message: str = "The request to the OpenZync API timed out."
+
+
 class EntityNotFoundError(OpenZyncError):
     """Requested graph entity node does not exist."""
 

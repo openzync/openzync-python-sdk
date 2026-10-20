@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 import pytest
 from httpx import Response
 
@@ -20,7 +23,9 @@ from openzync._errors import (
     PayloadTooLargeError,
     PIIUnavailableError,
     RateLimitError,
+    RequestTimeoutError,
     ServiceUnavailableError,
+    TransportError,
     ValidationError,
     raise_on_error,
 )
@@ -217,3 +222,108 @@ class TestHTTPRetry:
         user = await async_client.users.get("u1")
         assert user.name == "Alice"
         assert call_count == 2
+
+
+FACT_TRIPLE = {"subject": "Alice", "predicate": "works_at", "object": "OpenZync"}
+
+
+class TestTransportErrors:
+    """Tests for failures that never produced an HTTP response.
+
+    A transport failure (connection refused, DNS failure, reset, protocol
+    violation) means the API never answered, so there is no status code to
+    map through ``raise_on_error``.  The SDK maps them onto
+    ``TransportError`` — timeouts onto ``RequestTimeoutError`` — so callers
+    can still catch them as ``OpenZyncError``.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            httpx.ConnectError("connection refused"),
+            httpx.ReadError("connection reset"),
+            httpx.WriteError("connection broken"),
+            httpx.RemoteProtocolError("malformed response"),
+            httpx.LocalProtocolError("protocol violation"),
+        ],
+    )
+    async def test_transport_failure_maps_to_transport_error(
+        self, async_client, mock_http, mock_resolve, exc
+    ):
+        """A non-timeout transport failure surfaces as TransportError."""
+        mock_http.post("/v1/projects/p1/facts").side_effect = exc
+
+        with pytest.raises(TransportError) as exc_info:
+            await async_client.facts.add(facts=[FACT_TRIPLE], session_id="s1")
+
+        error = exc_info.value
+        assert isinstance(error, OpenZyncError)
+        # A timeout is a distinct case within the transport family.
+        assert not isinstance(error, RequestTimeoutError)
+        assert error.status_code == 503
+        assert error.detail["error_type"] == type(exc).__name__
+        assert error.detail["url"].endswith("/v1/projects/p1/facts")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            httpx.TimeoutException("timed out"),
+            httpx.ConnectTimeout("connect timed out"),
+            httpx.ReadTimeout("read timed out"),
+            httpx.WriteTimeout("write timed out"),
+            httpx.PoolTimeout("pool timed out"),
+        ],
+    )
+    async def test_timeout_maps_to_request_timeout_error(
+        self, async_client, mock_http, mock_resolve, exc
+    ):
+        """Every httpx timeout surfaces as RequestTimeoutError."""
+        mock_http.post("/v1/projects/p1/facts").side_effect = exc
+
+        with pytest.raises(RequestTimeoutError) as exc_info:
+            await async_client.facts.add(facts=[FACT_TRIPLE], session_id="s1")
+
+        error = exc_info.value
+        # A timeout is a TransportError, so one catch clause covers both.
+        assert isinstance(error, TransportError)
+        assert isinstance(error, OpenZyncError)
+        assert error.status_code == 504
+        assert error.detail["error_type"] == type(exc).__name__
+
+    @pytest.mark.asyncio
+    async def test_transport_error_post_not_retried_without_idempotency_key(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """A POST without an Idempotency-Key is never replayed on a transport error."""
+        route = mock_http.post("/v1/projects/p1/facts")
+        route.side_effect = httpx.ConnectError("connection refused")
+
+        with pytest.raises(TransportError, match="1 attempt"):
+            await async_client.facts.add(facts=[FACT_TRIPLE], session_id="s1")
+
+        assert route.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_transport_error_post_retried_with_idempotency_key(
+        self, async_client, mock_http, mock_resolve, monkeypatch
+    ):
+        """With an Idempotency-Key the same POST is retried until the budget is spent."""
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        route = mock_http.post("/v1/projects/p1/facts")
+        route.side_effect = httpx.ConnectError("connection refused")
+
+        with pytest.raises(TransportError, match="4 attempts"):
+            await async_client.facts.add(
+                facts=[FACT_TRIPLE], session_id="s1", idempotency_key="k1"
+            )
+
+        assert route.call_count == 4  # max_retries + 1
+        assert len(sleeps) == 3  # one backoff between each retry

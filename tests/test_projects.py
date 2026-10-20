@@ -371,3 +371,14 @@ class TestProjectsClient:
         assert request.method == "PATCH"
         assert request.url.params["role"] == "owner"
         assert result.role == "owner"
+
+    @pytest.mark.asyncio
+    async def test_update_member_requires_role(self, async_client):
+        """``role`` is mandatory — a missing role must not default to "member".
+
+        The old default silently demoted a project OWNER when the caller
+        meant to change nothing, so the argument is now required and the
+        call fails loudly instead.
+        """
+        with pytest.raises(TypeError, match="role"):
+            await async_client.projects.update_member(user_id="u2")
