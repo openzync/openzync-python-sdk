@@ -94,6 +94,10 @@ class PaginatedFactsResponse(BaseModel):
         default=None, description="Cursor for the next page."
     )
     has_more: bool = Field(default=False)
+    total: int | None = Field(
+        default=None,
+        description="Total matching records (present when the server reports it).",
+    )
 
 
 class FactHistoryEvent(BaseModel):

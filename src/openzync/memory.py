@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Literal
 
 from openzync._errors import ValidationError
@@ -15,6 +16,21 @@ from openzync.models.memory import (
 
 # Mirrors core's schemas/sorting.py SearchSort.
 ContextSort = Literal["relevance", "recent"]
+
+
+def new_idempotency_key() -> str:
+    """Generate a time-ordered idempotency key for a write request.
+
+    Uses UUIDv7 when the runtime provides it (Python 3.14+), UUIDv4
+    otherwise — both are unique per call, which is all the server's
+    ``Idempotency-Key`` dedupe requires.
+
+    Returns:
+        A hex key unique to this call (never reuse across retries of
+        different logical operations).
+    """
+    new_uuid = getattr(uuid, "uuid7", None) or uuid.uuid4
+    return new_uuid().hex
 
 
 class AsyncMemoryClient:
@@ -49,10 +65,12 @@ class AsyncMemoryClient:
             session_id: Session external ID — required, all ingestion targets
                 an existing session.
             idempotency_key: Optional ``Idempotency-Key`` header. When
-                provided, ``POST`` retries on 429/5xx and timeouts are
-                enabled (safe retry — the server dedupes by key); without
-                it the request fails fast with no retry so a write is never
-                duplicated.
+                omitted, a fresh key is generated once per call — it is
+                reused across the transport's automatic retries of THIS
+                call only. A new ``ingest`` call generates a new key and
+                creates a new episode, so caller-level retries (a new call
+                after a timeout or ambiguous failure) MUST pass an explicit
+                key or the write will be duplicated.
             blobs: Optional list of ``(filename, data, mime_type)`` tuples.
                 When provided, the request is sent as ``multipart/form-data``
                 with the JSON payload in a ``data`` field and each blob as a
@@ -65,9 +83,11 @@ class AsyncMemoryClient:
         body: dict = {"messages": [_as_message(m) for m in messages]}
         body["session_id"] = session_id
 
-        headers = None
-        if idempotency_key is not None:
-            headers = {"Idempotency-Key": idempotency_key}
+        # Generated once per call and reused for every transport-level
+        # retry of this call (the transport resends the same headers) —
+        # never regenerated on retry, so retries dedupe server-side.
+        key = idempotency_key or new_idempotency_key()
+        headers = {"Idempotency-Key": key}
 
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None
         if blobs:
