@@ -96,6 +96,10 @@ class SessionMessagesResponse(BaseModel):
     data: list[MessageItem] = Field(..., description="List of messages.")
     next_cursor: str | None = Field(default=None)
     has_more: bool = Field(default=False)
+    total: int | None = Field(
+        default=None,
+        description="Total matching records (present when the server reports it).",
+    )
 
 
 class SessionListResponse(BaseModel):
@@ -110,3 +114,7 @@ class SessionListResponse(BaseModel):
     data: list[SessionListItem] = Field(..., description="Sessions for the current page.")
     next_cursor: str | None = Field(default=None)
     has_more: bool = Field(default=False)
+    total: int | None = Field(
+        default=None,
+        description="Total matching records (present when the server reports it).",
+    )

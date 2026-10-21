@@ -39,6 +39,7 @@ class AsyncPaginatedIterator:
         self._index: int = 0
         self._cursor: str | None = None
         self._has_more: bool = True
+        self._owner_close: Callable[[], Any] | None = None
 
     def __aiter__(self) -> AsyncPaginatedIterator:
         return self
@@ -46,10 +47,12 @@ class AsyncPaginatedIterator:
     async def __anext__(self) -> Any:
         if self._index >= len(self._items):
             if not self._has_more:
+                await self.aclose()
                 raise StopAsyncIteration
             await self._fetch_page()
 
         if self._index >= len(self._items):
+            await self.aclose()
             raise StopAsyncIteration
 
         item = self._items[self._index]
@@ -88,6 +91,19 @@ class AsyncPaginatedIterator:
             )
         except StopAsyncIteration:
             raise StopIteration
+
+    async def aclose(self) -> None:
+        """Release the owning transport, if this iterator owns one.
+
+        Iterators created by the sync ``OpenZync`` client carry the
+        per-call transport that must stay open for lazy page fetches —
+        it is closed here, on exhaustion.  Iterators from
+        ``AsyncOpenZync`` carry no owner (the caller owns the client)
+        and this is a no-op.
+        """
+        if self._owner_close is not None:
+            close, self._owner_close = self._owner_close, None
+            await close()
 
     async def _fetch_page(self) -> None:
         result = await self._fetch(self._cursor)

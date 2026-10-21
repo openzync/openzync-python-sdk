@@ -1,0 +1,1 @@
+BREAKING: per-call transport — the shared `_async` client is gone and `_SyncDomainWrapper(owner, domain)` takes ownership of its domain client. Also: automatic Idempotency-Key generation on mutating calls (one key per logical call, reused across retries; pass your own to dedupe across calls) and optional `total` on list models.

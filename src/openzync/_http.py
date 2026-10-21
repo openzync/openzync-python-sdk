@@ -4,6 +4,9 @@ Wraps ``httpx.AsyncClient`` with:
 - Bearer token authentication
 - Exponential backoff retry for 429/5xx responses, honoring ``Retry-After``
 - Structured error mapping via ``_errors.raise_on_error``
+- Transport failures (connect/DNS/protocol/timeout) mapped onto
+  ``_errors.TransportError`` — they never reach the API, so there is no
+  response to map
 """
 
 from __future__ import annotations
@@ -17,7 +20,13 @@ from typing import Any
 
 import httpx
 
-from openzync._errors import AuthorizationError, OpenZyncError, raise_on_error
+from openzync._errors import (
+    AuthorizationError,
+    OpenZyncError,
+    RequestTimeoutError,
+    TransportError,
+    raise_on_error,
+)
 from openzync._version import __version__ as _sdk_version
 
 logger = logging.getLogger(__name__)
@@ -108,6 +117,48 @@ def _attempts_phrase(attempts: int) -> str:
     return f"{attempts} attempt" if attempts == 1 else f"{attempts} attempts"
 
 
+def _transport_error(
+    exc: httpx.TransportError,
+    attempts: int,
+    url: str,
+) -> OpenZyncError:
+    """Map a transport-level failure onto the SDK's error taxonomy.
+
+    Every ``httpx.TransportError`` — connect refused, DNS failure, read
+    error, remote protocol error, pool timeout — means the API never
+    produced an HTTP response, so none of them can be mapped through
+    ``raise_on_error``.  They are mapped here instead, so callers can
+    catch them as ``OpenZyncError`` and tell "the backend refused the
+    connection" apart from "the backend answered 502".
+
+    Args:
+        exc: The httpx transport error that aborted the request.
+        attempts: Number of attempts made (1-based).
+        url: The request URL — carries no credential (the API key travels
+            in a header), so it is safe to include as error context.
+
+    Returns:
+        ``RequestTimeoutError`` for timeouts (a distinct, useful case
+        within the transport family), ``TransportError`` for every other
+        transport failure.
+    """
+    detail = {"url": url, "error_type": type(exc).__name__}
+    if isinstance(exc, httpx.TimeoutException):
+        return RequestTimeoutError(
+            message=f"Request timed out after {_attempts_phrase(attempts)}: {exc}",
+            detail=detail,
+            status_code=504,
+        )
+    return TransportError(
+        message=(
+            f"Transport error after {_attempts_phrase(attempts)}: "
+            f"{type(exc).__name__}: {exc}"
+        ),
+        detail=detail,
+        status_code=503,
+    )
+
+
 def _has_idempotency_key(headers: dict[str, str] | None) -> bool:
     """Check for an ``Idempotency-Key`` header (case-insensitive).
 
@@ -181,7 +232,8 @@ class AsyncHTTPTransport:
         """Make an HTTP request with retry and error mapping.
 
         Retry policy: ``GET``/``PUT``/``PATCH``/``DELETE`` retry on
-        429/5xx and timeouts with exponential backoff (jittered, and
+        429/5xx, timeouts and transport failures (connection refused, DNS
+        or protocol errors) with exponential backoff (jittered, and
         honoring the server's ``Retry-After`` header when present).
         ``POST`` is only
         retried when an ``Idempotency-Key`` header is present — without it
@@ -206,6 +258,11 @@ class AsyncHTTPTransport:
                 ``"empty response"`` when a body-expecting method receives
                 ``204``/empty 2xx; non-JSON 2xx details the status, a
                 200-char content preview, and the URL.
+            TransportError: When the request never reached the API (connection
+                refused, DNS failure, protocol error) — no HTTP response
+                exists to map.  Retried like a timeout on retryable methods.
+            RequestTimeoutError: When the request timed out (a
+                ``TransportError`` subclass).
         """
         url = self._build_url(path)
         can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
@@ -219,18 +276,23 @@ class AsyncHTTPTransport:
                     params=params,
                     headers=headers,
                 )
-            except httpx.TimeoutException as exc:
-                logger.warning("http.timeout", extra={"url": url, "attempt": attempt})
+            except httpx.TransportError as exc:
+                # TimeoutException is a TransportError subclass, so this
+                # single branch covers timeouts, connect failures, DNS
+                # failures and protocol errors alike — none of which carry
+                # an HTTP response to map through raise_on_error.
+                logger.warning(
+                    "http.transport_error",
+                    extra={
+                        "url": url,
+                        "attempt": attempt,
+                        "error_type": type(exc).__name__,
+                    },
+                )
                 if can_retry and attempt < self._max_retries:
                     await self._wait(attempt)
                     continue
-                raise OpenZyncError(
-                    message=(
-                        f"Request timed out after "
-                        f"{_attempts_phrase(attempt + 1)}: {exc}"
-                    ),
-                    status_code=504,
-                ) from exc
+                raise _transport_error(exc, attempt + 1, url) from exc
 
             if (
                 response.status_code in RETRYABLE_STATUSES
@@ -335,7 +397,11 @@ class AsyncHTTPTransport:
                 ``204``/empty 2xx; non-JSON 2xx details the status, a
                 200-char content preview, and the URL. ``POST`` without an
                 ``Idempotency-Key`` header is never retried — it fails fast.
-            httpx.TimeoutException: On timeout after retries.
+            TransportError: When the request never reached the API (connection
+                refused, DNS failure, protocol error) — no HTTP response
+                exists to map.  Retried like a timeout on retryable methods.
+            RequestTimeoutError: When the request timed out (a
+                ``TransportError`` subclass).
         """
         url = self._build_url(path)
         can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
@@ -350,21 +416,19 @@ class AsyncHTTPTransport:
                     headers=headers,
                     params=params,
                 )
-            except httpx.TimeoutException as exc:
+            except httpx.TransportError as exc:
                 logger.warning(
-                    "http.multipart_timeout",
-                    extra={"url": url, "attempt": attempt},
+                    "http.multipart_transport_error",
+                    extra={
+                        "url": url,
+                        "attempt": attempt,
+                        "error_type": type(exc).__name__,
+                    },
                 )
                 if can_retry and attempt < self._max_retries:
                     await self._wait(attempt)
                     continue
-                raise OpenZyncError(
-                    message=(
-                        f"Request timed out after "
-                        f"{_attempts_phrase(attempt + 1)}: {exc}"
-                    ),
-                    status_code=504,
-                ) from exc
+                raise _transport_error(exc, attempt + 1, url) from exc
 
             if (
                 response.status_code in RETRYABLE_STATUSES

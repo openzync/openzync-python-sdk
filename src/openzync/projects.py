@@ -256,16 +256,22 @@ class AsyncProjectsClient:
             f"/v1/projects/{pid}/members/{user_id}",
         )
 
+    # ⚠️ BREAKING: ``role`` is required — it used to default to "member",
+    # so a caller that meant to change nothing silently demoted an owner
+    # to member.  Core requires the query param too
+    # (``role: str = Query(..., pattern="^(owner|member)$")``).
     async def update_member(
         self,
         user_id: str,
-        role: str = "member",
+        role: str,
     ) -> ProjectMemberResponse:
         """Change a member's role within a project.
 
         Args:
             user_id: The UUID of the user whose role to change.
-            role: New project role (``"owner"`` or ``"member"``).
+            role: New project role (``"owner"`` or ``"member"``).  Required
+                — there is no default, because defaulting to ``"member"``
+                demoted owners when the caller meant to change nothing.
 
         Returns:
             ``ProjectMemberResponse`` with the updated membership.
