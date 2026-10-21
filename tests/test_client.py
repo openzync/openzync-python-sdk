@@ -37,13 +37,27 @@ class TestOpenZyncSync:
     def test_init_sets_up_sub_clients(self, api_key, base_url):
         """Sync client has all domain wrappers attached."""
         client = OpenZync(api_key=api_key, base_url=base_url)
-        assert isinstance(client._async, AsyncOpenZync)
-        assert isinstance(client.memory, _SyncDomainWrapper)
-        assert isinstance(client.facts, _SyncDomainWrapper)
-        assert isinstance(client.graph, _SyncDomainWrapper)
-        assert isinstance(client.users, _SyncDomainWrapper)
-        assert isinstance(client.sessions, _SyncDomainWrapper)
-        assert isinstance(client.projects, _SyncDomainWrapper)
+        assert client._api_key == api_key
+        assert client._project_id is None
+        domains = [
+            "memory",
+            "facts",
+            "graph",
+            "users",
+            "sessions",
+            "projects",
+            "search",
+            "observations",
+            "classifications",
+            "structured_extractions",
+            "schemas",
+        ]
+        for domain in domains:
+            wrapper = getattr(client, domain)
+            assert isinstance(wrapper, _SyncDomainWrapper)
+            assert wrapper._owner is client
+            assert wrapper._domain == domain
+        assert isinstance(client._new_client(), AsyncOpenZync)
 
     def test_close(self, api_key, base_url):
         """Sync close() does not raise."""
@@ -55,27 +69,27 @@ class TestOpenZyncSync:
 class TestSyncDomainWrapper:
     """Tests for ``_SyncDomainWrapper``."""
 
-    def test_getattr_non_async_returns_directly(self):
-        """Non-coroutine attributes pass through unchanged."""
-
-        class FakeAsync:
-            greeting = "hello"
-
-        wrapper = _SyncDomainWrapper(FakeAsync())
-        assert wrapper.greeting == "hello"
+    def test_getattr_non_async_returns_directly(self, api_key, base_url):
+        """Non-underscore attrs return a callable sync wrapper; _-prefixed raise."""
+        owner = OpenZync(api_key=api_key, base_url=base_url)
+        wrapper = _SyncDomainWrapper(owner, "memory")
+        assert callable(wrapper.ingest)
+        with pytest.raises(AttributeError):
+            wrapper._secret
 
     def test_getattr_sync_wrapper_proxies(self, api_key, base_url):
-        """Sync wrapper calls async methods via asyncio.run()."""
-        async_client = AsyncOpenZync(api_key=api_key, base_url=base_url)
-        wrapper = _SyncDomainWrapper(async_client)
-        # Check that domain attributes are accessible through the wrapper
-        assert hasattr(wrapper, "_async")
+        """Wrapper stores owner and domain for proxying."""
+        owner = OpenZync(api_key=api_key, base_url=base_url)
+        wrapper = _SyncDomainWrapper(owner, "graph")
+        assert wrapper._owner is owner
+        assert wrapper._domain == "graph"
 
-    def test_wrapper_repr(self):
-        """Wrapper stores a reference to the async client."""
-        async_client = object()
-        wrapper = _SyncDomainWrapper(async_client)
-        assert wrapper._async is async_client
+    def test_wrapper_repr(self, api_key, base_url):
+        """Wrapper stores a reference to the owner client."""
+        owner = OpenZync(api_key=api_key, base_url=base_url)
+        wrapper = _SyncDomainWrapper(owner, "memory")
+        assert wrapper._owner is owner
+        assert wrapper._domain == "memory"
 
     def test_sync_wrapper_executes_method(
         self, api_key, base_url, mock_http, mock_resolve
