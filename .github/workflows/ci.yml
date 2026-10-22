@@ -114,7 +114,7 @@ jobs:
       - name: Build changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          towncrier build --version "$VERSION" --yes --config pyproject.toml
+          towncrier build --version "$VERSION" --yes --config pyproject.toml || { echo "no fragments — skipping"; exit 0; }
       - name: Commit changelog
         run: |
           git config user.email "ci@openzync.tech"
