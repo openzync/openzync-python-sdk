@@ -1,1 +1,0 @@
-**BREAKING:** `AsyncProjectsClient.update_member()` now requires an explicit `role` — it used to default to `"member"`, so a caller that meant to change nothing silently demoted a project owner to member (core requires the query parameter too). Pass the intended role (`"owner"` or `"member"`) on every call.

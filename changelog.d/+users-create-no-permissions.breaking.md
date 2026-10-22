@@ -1,1 +1,0 @@
-**BREAKING:** `AsyncUsersClient.create()` no longer accepts `permissions`, and the `permissions` field was removed from `UserCreateRequest` — core validates but silently drops it on `POST /v1/users` (permissions are seeded server-side from the role defaults), so passing it granted nothing. Use `update()` after creation to set permissions.

@@ -1,1 +1,0 @@
-**BREAKING:** `SyncPaginatedIterator` was deleted — `AsyncPaginatedIterator` is now dual-mode and drives both sync (`for page in iter(client.list_iter(...))`) and async (`async for page in await client.list_iter(...)`) iteration, so the separate sync class is redundant. Import `AsyncPaginatedIterator` from `openzync._pagination` (or use the client `*_iter()` methods) instead.
