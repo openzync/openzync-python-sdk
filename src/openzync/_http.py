@@ -195,19 +195,26 @@ class AsyncHTTPTransport:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._max_retries = max_retries
+        self._timeout = timeout
         self._project_id: str | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._client = self._build_client()
 
+    def _build_client(self) -> httpx.AsyncClient:
+        """Build the underlying async HTTP client."""
         # browser-like UA + HTTP/2 + Accept header to reduce
         # Cloudflare JS challenge likelihood from datacenter IPs.
         # SDK identity moved to X-SDK-Version header.
-        self._client = httpx.AsyncClient(
+        return httpx.AsyncClient(
             base_url=self._base_url,
             # connect/read/pool stay at ``timeout``; writes get the longer
             # blob-upload budget, never below the caller's read timeout.
-            timeout=httpx.Timeout(timeout, write=max(timeout, WRITE_TIMEOUT)),
+            timeout=httpx.Timeout(
+                self._timeout, write=max(self._timeout, WRITE_TIMEOUT)
+            ),
             http2=True,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {self._api_key}",
                 "Accept": "application/json",
                 "User-Agent": (
                     "Mozilla/5.0 (compatible; OpenZyncSDK; "
@@ -217,9 +224,34 @@ class AsyncHTTPTransport:
             },
         )
 
+    async def _ensure_bound_loop(self) -> None:
+        """Rebuild the client when the running loop changed since creation.
+
+        Sync ``list_iter`` drives each page in a fresh ``asyncio.run()``
+        loop while reusing one transport — the pooled keep-alive
+        connection stays bound to the dead loop and page 2 dies with
+        ``RuntimeError: Event loop is closed``. Rebuilding on loop
+        change keeps the transport usable across loops.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._loop is None:
+            self._loop = loop
+            return
+        if self._loop is not loop:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = self._build_client()
+            self._loop = loop
+
     async def close(self) -> None:
         """Close the underlying HTTP client connection pool."""
         await self._client.aclose()
+        self._loop = None
 
     async def request(
         self,
@@ -265,6 +297,7 @@ class AsyncHTTPTransport:
                 ``TransportError`` subclass).
         """
         url = self._build_url(path)
+        await self._ensure_bound_loop()
         can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
         for attempt in range(self._max_retries + 1):
@@ -404,6 +437,7 @@ class AsyncHTTPTransport:
                 ``TransportError`` subclass).
         """
         url = self._build_url(path)
+        await self._ensure_bound_loop()
         can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
         for attempt in range(self._max_retries + 1):

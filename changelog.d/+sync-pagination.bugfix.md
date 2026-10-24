@@ -1,0 +1,1 @@
+Fix sync client pagination hanging or binding to a closed event loop: the sync transport now rebuilds when called from a different event loop, and iteration stops when the server returns a null cursor instead of re-requesting the same page indefinitely.
