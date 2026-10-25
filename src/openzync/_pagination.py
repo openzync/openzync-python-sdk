@@ -117,4 +117,8 @@ class AsyncPaginatedIterator:
             self._items = list(getattr(result, "data", []))
             self._cursor = getattr(result, "next_cursor", None)
             self._has_more = getattr(result, "has_more", False)
+        if self._has_more and self._cursor is None:
+            # Fail-safe: a page claiming more data without a cursor to
+            # fetch it with would loop forever — stop instead.
+            self._has_more = False
         self._index = 0

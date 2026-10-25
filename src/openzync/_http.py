@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -60,6 +62,15 @@ Reads stay at ``DEFAULT_TIMEOUT`` while writes get the longer of
 ``WRITE_TIMEOUT`` and the caller-supplied ``timeout``. Multipart memory
 ingestion uploads blobs — a 30s write budget aborts large uploads
 before the server has finished receiving them.
+"""
+
+PROJECT_ID_TTL_SEC: float = 60.0
+"""Lifetime of the cached ``resolve_project_id`` value.
+
+The project scoping of an API key changes rarely (re-scoped keys), but a
+long-lived cache pins a stale project. Sixty seconds bounds the blast
+radius and matches the server RBAC cache TTL; auth failures invalidate
+immediately (see :meth:`AsyncHTTPTransport.invalidate_project_id`).
 """
 
 # httpx encodes ``data`` as ``application/x-www-form-urlencoded`` unless
@@ -195,19 +206,27 @@ class AsyncHTTPTransport:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._max_retries = max_retries
+        self._timeout = timeout
         self._project_id: str | None = None
+        self._project_id_resolved_at: float | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._client = self._build_client()
 
+    def _build_client(self) -> httpx.AsyncClient:
+        """Build the underlying async HTTP client."""
         # browser-like UA + HTTP/2 + Accept header to reduce
         # Cloudflare JS challenge likelihood from datacenter IPs.
         # SDK identity moved to X-SDK-Version header.
-        self._client = httpx.AsyncClient(
+        return httpx.AsyncClient(
             base_url=self._base_url,
             # connect/read/pool stay at ``timeout``; writes get the longer
             # blob-upload budget, never below the caller's read timeout.
-            timeout=httpx.Timeout(timeout, write=max(timeout, WRITE_TIMEOUT)),
+            timeout=httpx.Timeout(
+                self._timeout, write=max(self._timeout, WRITE_TIMEOUT)
+            ),
             http2=True,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {self._api_key}",
                 "Accept": "application/json",
                 "User-Agent": (
                     "Mozilla/5.0 (compatible; OpenZyncSDK; "
@@ -217,9 +236,156 @@ class AsyncHTTPTransport:
             },
         )
 
+    async def _ensure_bound_loop(self) -> None:
+        """Rebuild the client when the running loop changed since creation.
+
+        Sync ``list_iter`` drives each page in a fresh ``asyncio.run()``
+        loop while reusing one transport — the pooled keep-alive
+        connection stays bound to the dead loop and page 2 dies with
+        ``RuntimeError: Event loop is closed``. Rebuilding on loop
+        change keeps the transport usable across loops.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._loop is None:
+            self._loop = loop
+            return
+        if self._loop is not loop:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = self._build_client()
+            self._loop = loop
+
     async def close(self) -> None:
         """Close the underlying HTTP client connection pool."""
         await self._client.aclose()
+        self._loop = None
+
+    async def _send_with_retry(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None,
+        params: dict[str, str | int] | None,
+        log_tag: str,
+        send: Callable[[], Awaitable[httpx.Response]],
+    ) -> Any:
+        """Run ``send`` with retry, error mapping, and response parsing.
+
+        Shared by :meth:`request` and :meth:`request_multipart`: retry
+        ``GET``/``PUT``/``PATCH``/``DELETE`` (and ``POST`` only with an
+        ``Idempotency-Key``) on 429/5xx, timeouts and transport failures
+        with exponential backoff; map HTTP errors onto the SDK taxonomy;
+        parse the JSON body.
+
+        Args:
+            method: HTTP method (drives 204/DELETE handling + POST retry).
+            url: Full request URL (carries no credential — safe for errors).
+            headers: Per-request headers (Idempotency-Key enables POST retry).
+            params: Optional query parameters.
+            log_tag: Log-event prefix (``"http"`` or ``"http.multipart"``).
+            send: Zero-arg closure performing the single attempt.
+
+        Returns:
+            Parsed JSON body, or ``None`` for ``DELETE`` with ``204``.
+
+        Raises:
+            OpenZyncError: Mapped API error, ``"empty response"``, or
+                non-JSON 2xx body.
+            TransportError: Unreachable API (retried like a timeout).
+            RequestTimeoutError: Timed-out attempt.
+        """
+        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await send()
+            except httpx.TransportError as exc:
+                logger.warning(
+                    f"{log_tag}.transport_error",
+                    extra={
+                        "url": url,
+                        "attempt": attempt,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                if can_retry and attempt < self._max_retries:
+                    await self._wait(attempt)
+                    continue
+                raise _transport_error(exc, attempt + 1, url) from exc
+
+            if (
+                response.status_code in RETRYABLE_STATUSES
+                and attempt < self._max_retries
+                and can_retry
+            ):
+                logger.info(
+                    f"{log_tag}.retry",
+                    extra={
+                        "url": url,
+                        "status": response.status_code,
+                        "attempt": attempt + 1,
+                    },
+                )
+                await self._wait(attempt, response)
+                continue
+
+            # 204 No Content — only DELETE is typed to return None; any
+            # body-expecting method receiving 204 is a contract violation.
+            if response.status_code == 204:
+                if method.upper() == "DELETE":
+                    return None
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=204,
+                )
+
+            if response.is_error:
+                if response.status_code in (401, 403, 404):
+                    # Revoked/re-scoped key or removed project — the cached
+                    # project_id is distrusted immediately, not at TTL.
+                    self.invalidate_project_id()
+                try:
+                    body = response.json()
+                except Exception:
+                    body = {"detail": response.text}
+                raise_on_error(response.status_code, body)
+
+            # DELETE is typed None — an empty 2xx body means "done".
+            if method.upper() == "DELETE" and not response.content:
+                return None
+            if not response.content:
+                raise OpenZyncError(
+                    message="empty response",
+                    status_code=response.status_code,
+                )
+
+            try:
+                return response.json()
+            except Exception as exc:
+                raise OpenZyncError(
+                    message=(
+                        f"Expected JSON from {url} "
+                        f"(status {response.status_code}), "
+                        f"got non-JSON body: {response.text[:200]!r}"
+                    ),
+                    status_code=response.status_code,
+                    detail={
+                        "url": url,
+                        "content_preview": response.text[:200],
+                    },
+                ) from exc
+
+        # Should not reach here, but safety net:
+        raise OpenZyncError(
+            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
+            status_code=500,
+        )
 
     async def request(
         self,
@@ -265,97 +431,24 @@ class AsyncHTTPTransport:
                 ``TransportError`` subclass).
         """
         url = self._build_url(path)
-        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
+        await self._ensure_bound_loop()
 
-        for attempt in range(self._max_retries + 1):
-            try:
-                response = await self._client.request(
-                    method=method,
-                    url=url,
-                    json=json_body,
-                    params=params,
-                    headers=headers,
-                )
-            except httpx.TransportError as exc:
-                # TimeoutException is a TransportError subclass, so this
-                # single branch covers timeouts, connect failures, DNS
-                # failures and protocol errors alike — none of which carry
-                # an HTTP response to map through raise_on_error.
-                logger.warning(
-                    "http.transport_error",
-                    extra={
-                        "url": url,
-                        "attempt": attempt,
-                        "error_type": type(exc).__name__,
-                    },
-                )
-                if can_retry and attempt < self._max_retries:
-                    await self._wait(attempt)
-                    continue
-                raise _transport_error(exc, attempt + 1, url) from exc
+        async def send() -> httpx.Response:
+            return await self._client.request(
+                method=method,
+                url=url,
+                json=json_body,
+                params=params,
+                headers=headers,
+            )
 
-            if (
-                response.status_code in RETRYABLE_STATUSES
-                and attempt < self._max_retries
-                and can_retry
-            ):
-                logger.info(
-                    "http.retry",
-                    extra={
-                        "url": url,
-                        "status": response.status_code,
-                        "attempt": attempt + 1,
-                    },
-                )
-                await self._wait(attempt, response)
-                continue
-
-            # 204 No Content — only DELETE is typed to return None; any
-            # body-expecting method receiving 204 is a contract violation.
-            if response.status_code == 204:
-                if method.upper() == "DELETE":
-                    return None
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=204,
-                )
-
-            if response.is_error:
-                try:
-                    body = response.json()
-                except Exception:
-                    body = {"detail": response.text}
-                raise_on_error(response.status_code, body)
-
-            # DELETE is typed None — an empty 2xx body means "done".
-            if method.upper() == "DELETE" and not response.content:
-                return None
-            if not response.content:
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=response.status_code,
-                )
-
-            try:
-                return response.json()
-            except Exception as exc:
-                raise OpenZyncError(
-                    message=(
-                        f"Expected JSON from {url} "
-                        f"(status {response.status_code}), "
-                        f"got non-JSON body: {response.text[:200]!r}"
-                    ),
-                    status_code=response.status_code,
-                    detail={
-                        "url": url,
-                        "content_preview": response.text[:200],
-                    },
-                ) from exc
-
-        # Should not reach here, but safety net:
-        raise OpenZyncError(
-            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
-            status_code=500,
+        return await self._send_with_retry(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            log_tag="http",
+            send=send,
         )
 
     async def request_multipart(
@@ -404,93 +497,25 @@ class AsyncHTTPTransport:
                 ``TransportError`` subclass).
         """
         url = self._build_url(path)
-        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
+        await self._ensure_bound_loop()
 
-        for attempt in range(self._max_retries + 1):
-            try:
-                response = await self._client.request(
-                    method=method,
-                    url=url,
-                    data=data,
-                    files=files or _EMPTY_FILES,
-                    headers=headers,
-                    params=params,
-                )
-            except httpx.TransportError as exc:
-                logger.warning(
-                    "http.multipart_transport_error",
-                    extra={
-                        "url": url,
-                        "attempt": attempt,
-                        "error_type": type(exc).__name__,
-                    },
-                )
-                if can_retry and attempt < self._max_retries:
-                    await self._wait(attempt)
-                    continue
-                raise _transport_error(exc, attempt + 1, url) from exc
+        async def send_multipart() -> httpx.Response:
+            return await self._client.request(
+                method=method,
+                url=url,
+                data=data,
+                files=files or _EMPTY_FILES,
+                headers=headers,
+                params=params,
+            )
 
-            if (
-                response.status_code in RETRYABLE_STATUSES
-                and attempt < self._max_retries
-                and can_retry
-            ):
-                logger.info(
-                    "http.multipart_retry",
-                    extra={
-                        "url": url,
-                        "status": response.status_code,
-                        "attempt": attempt,
-                    },
-                )
-                await self._wait(attempt, response)
-                continue
-
-            # 204 No Content — only DELETE is typed to return None; any
-            # body-expecting method receiving 204 is a contract violation.
-            if response.status_code == 204:
-                if method.upper() == "DELETE":
-                    return None
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=204,
-                )
-
-            if response.is_error:
-                try:
-                    body = response.json()
-                except Exception:
-                    body = {"detail": response.text}
-                raise_on_error(response.status_code, body)
-
-            # DELETE is typed None — an empty 2xx body means "done".
-            if method.upper() == "DELETE" and not response.content:
-                return None
-            if not response.content:
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=response.status_code,
-                )
-
-            try:
-                return response.json()
-            except Exception as exc:
-                raise OpenZyncError(
-                    message=(
-                        f"Expected JSON from {url} "
-                        f"(status {response.status_code}), "
-                        f"got non-JSON body: {response.text[:200]!r}"
-                    ),
-                    status_code=response.status_code,
-                    detail={
-                        "url": url,
-                        "content_preview": response.text[:200],
-                    },
-                ) from exc
-
-        raise OpenZyncError(
-            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
-            status_code=500,
+        return await self._send_with_retry(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            log_tag="http.multipart",
+            send=send_multipart,
         )
 
     def _build_url(self, path: str) -> str:
@@ -522,9 +547,10 @@ class AsyncHTTPTransport:
     async def resolve_project_id(self) -> str:
         """Resolve the project_id from the API key via the backend.
 
-        Cached in memory for the lifetime of the client — the resolve
-        endpoint is called at most once.  Subsequent calls return the
-        cached value.
+        Cached in memory for ``PROJECT_ID_TTL_SEC`` (60s, matching the
+        server RBAC TTL) — the resolve endpoint is called at most once
+        per minute.  Use :meth:`invalidate_project_id` to force a
+        re-resolve (called automatically on 401/403/404).
 
         Returns:
             The project UUID string scoped to this API key.
@@ -535,7 +561,11 @@ class AsyncHTTPTransport:
                 before project scoping).
             AuthenticationError: If the key is revoked or invalid.
         """
-        if self._project_id is not None:
+        if (
+            self._project_id is not None
+            and self._project_id_resolved_at is not None
+            and time.monotonic() - self._project_id_resolved_at < PROJECT_ID_TTL_SEC
+        ):
             return self._project_id
 
         data = await self.request("GET", "/v1/api-key/project-id")
@@ -548,4 +578,14 @@ class AsyncHTTPTransport:
                 "Ensure your API key is scoped to a project."
             )
         self._project_id = pid
+        self._project_id_resolved_at = time.monotonic()
         return pid
+
+    def invalidate_project_id(self) -> None:
+        """Drop the cached project_id so the next call re-resolves it.
+
+        Called automatically on 401/403/404 (revoked key, re-scoped key,
+        removed project).  Call it explicitly after re-scoping a key.
+        """
+        self._project_id = None
+        self._project_id_resolved_at = None
