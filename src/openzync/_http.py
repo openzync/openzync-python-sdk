@@ -15,6 +15,7 @@ import asyncio
 import logging
 import random
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -264,69 +265,49 @@ class AsyncHTTPTransport:
         await self._client.aclose()
         self._loop = None
 
-    async def request(
+    async def _send_with_retry(
         self,
+        *,
         method: str,
-        path: str,
-        json_body: dict | list | None = None,
-        params: dict[str, str | int] | None = None,
-        headers: dict[str, str] | None = None,
+        url: str,
+        headers: dict[str, str] | None,
+        params: dict[str, str | int] | None,
+        log_tag: str,
+        send: Callable[[], Awaitable[httpx.Response]],
     ) -> Any:
-        """Make an HTTP request with retry and error mapping.
+        """Run ``send`` with retry, error mapping, and response parsing.
 
-        Retry policy: ``GET``/``PUT``/``PATCH``/``DELETE`` retry on
-        429/5xx, timeouts and transport failures (connection refused, DNS
-        or protocol errors) with exponential backoff (jittered, and
-        honoring the server's ``Retry-After`` header when present).
-        ``POST`` is only
-        retried when an ``Idempotency-Key`` header is present — without it
-        the request fails fast (mapped error, no retry) so a non-idempotent
-        write is never duplicated.
+        Shared by :meth:`request` and :meth:`request_multipart`: retry
+        ``GET``/``PUT``/``PATCH``/``DELETE`` (and ``POST`` only with an
+        ``Idempotency-Key``) on 429/5xx, timeouts and transport failures
+        with exponential backoff; map HTTP errors onto the SDK taxonomy;
+        parse the JSON body.
 
         Args:
-            method: HTTP method (``GET``, ``POST``, ``PATCH``, ``DELETE``).
-            path: URL path relative to base URL (e.g. ``/v1/users``).
-            json_body: Optional JSON-serializable request body.
+            method: HTTP method (drives 204/DELETE handling + POST retry).
+            url: Full request URL (carries no credential — safe for errors).
+            headers: Per-request headers (Idempotency-Key enables POST retry).
             params: Optional query parameters.
-            headers: Optional per-request headers (e.g. ``Idempotency-Key``,
-                which enables safe retry for ``POST``).
+            log_tag: Log-event prefix (``"http"`` or ``"http.multipart"``).
+            send: Zero-arg closure performing the single attempt.
 
         Returns:
-            Parsed JSON response body, or ``None`` for ``DELETE`` with
-            ``204 No Content`` (``DELETE`` is the only method typed to
-            return ``None``).
+            Parsed JSON body, or ``None`` for ``DELETE`` with ``204``.
 
         Raises:
-            OpenZyncError: Mapped from the API's RFC 7807 error response;
-                ``"empty response"`` when a body-expecting method receives
-                ``204``/empty 2xx; non-JSON 2xx details the status, a
-                200-char content preview, and the URL.
-            TransportError: When the request never reached the API (connection
-                refused, DNS failure, protocol error) — no HTTP response
-                exists to map.  Retried like a timeout on retryable methods.
-            RequestTimeoutError: When the request timed out (a
-                ``TransportError`` subclass).
+            OpenZyncError: Mapped API error, ``"empty response"``, or
+                non-JSON 2xx body.
+            TransportError: Unreachable API (retried like a timeout).
+            RequestTimeoutError: Timed-out attempt.
         """
-        url = self._build_url(path)
-        await self._ensure_bound_loop()
         can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
         for attempt in range(self._max_retries + 1):
             try:
-                response = await self._client.request(
-                    method=method,
-                    url=url,
-                    json=json_body,
-                    params=params,
-                    headers=headers,
-                )
+                response = await send()
             except httpx.TransportError as exc:
-                # TimeoutException is a TransportError subclass, so this
-                # single branch covers timeouts, connect failures, DNS
-                # failures and protocol errors alike — none of which carry
-                # an HTTP response to map through raise_on_error.
                 logger.warning(
-                    "http.transport_error",
+                    f"{log_tag}.transport_error",
                     extra={
                         "url": url,
                         "attempt": attempt,
@@ -344,7 +325,7 @@ class AsyncHTTPTransport:
                 and can_retry
             ):
                 logger.info(
-                    "http.retry",
+                    f"{log_tag}.retry",
                     extra={
                         "url": url,
                         "status": response.status_code,
@@ -406,6 +387,70 @@ class AsyncHTTPTransport:
             status_code=500,
         )
 
+    async def request(
+        self,
+        method: str,
+        path: str,
+        json_body: dict | list | None = None,
+        params: dict[str, str | int] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        """Make an HTTP request with retry and error mapping.
+
+        Retry policy: ``GET``/``PUT``/``PATCH``/``DELETE`` retry on
+        429/5xx, timeouts and transport failures (connection refused, DNS
+        or protocol errors) with exponential backoff (jittered, and
+        honoring the server's ``Retry-After`` header when present).
+        ``POST`` is only
+        retried when an ``Idempotency-Key`` header is present — without it
+        the request fails fast (mapped error, no retry) so a non-idempotent
+        write is never duplicated.
+
+        Args:
+            method: HTTP method (``GET``, ``POST``, ``PATCH``, ``DELETE``).
+            path: URL path relative to base URL (e.g. ``/v1/users``).
+            json_body: Optional JSON-serializable request body.
+            params: Optional query parameters.
+            headers: Optional per-request headers (e.g. ``Idempotency-Key``,
+                which enables safe retry for ``POST``).
+
+        Returns:
+            Parsed JSON response body, or ``None`` for ``DELETE`` with
+            ``204 No Content`` (``DELETE`` is the only method typed to
+            return ``None``).
+
+        Raises:
+            OpenZyncError: Mapped from the API's RFC 7807 error response;
+                ``"empty response"`` when a body-expecting method receives
+                ``204``/empty 2xx; non-JSON 2xx details the status, a
+                200-char content preview, and the URL.
+            TransportError: When the request never reached the API (connection
+                refused, DNS failure, protocol error) — no HTTP response
+                exists to map.  Retried like a timeout on retryable methods.
+            RequestTimeoutError: When the request timed out (a
+                ``TransportError`` subclass).
+        """
+        url = self._build_url(path)
+        await self._ensure_bound_loop()
+
+        async def send() -> httpx.Response:
+            return await self._client.request(
+                method=method,
+                url=url,
+                json=json_body,
+                params=params,
+                headers=headers,
+            )
+
+        return await self._send_with_retry(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            log_tag="http",
+            send=send,
+        )
+
     async def request_multipart(
         self,
         method: str,
@@ -453,97 +498,24 @@ class AsyncHTTPTransport:
         """
         url = self._build_url(path)
         await self._ensure_bound_loop()
-        can_retry = method.upper() != "POST" or _has_idempotency_key(headers)
 
-        for attempt in range(self._max_retries + 1):
-            try:
-                response = await self._client.request(
-                    method=method,
-                    url=url,
-                    data=data,
-                    files=files or _EMPTY_FILES,
-                    headers=headers,
-                    params=params,
-                )
-            except httpx.TransportError as exc:
-                logger.warning(
-                    "http.multipart_transport_error",
-                    extra={
-                        "url": url,
-                        "attempt": attempt,
-                        "error_type": type(exc).__name__,
-                    },
-                )
-                if can_retry and attempt < self._max_retries:
-                    await self._wait(attempt)
-                    continue
-                raise _transport_error(exc, attempt + 1, url) from exc
+        async def send_multipart() -> httpx.Response:
+            return await self._client.request(
+                method=method,
+                url=url,
+                data=data,
+                files=files or _EMPTY_FILES,
+                headers=headers,
+                params=params,
+            )
 
-            if (
-                response.status_code in RETRYABLE_STATUSES
-                and attempt < self._max_retries
-                and can_retry
-            ):
-                logger.info(
-                    "http.multipart_retry",
-                    extra={
-                        "url": url,
-                        "status": response.status_code,
-                        "attempt": attempt,
-                    },
-                )
-                await self._wait(attempt, response)
-                continue
-
-            # 204 No Content — only DELETE is typed to return None; any
-            # body-expecting method receiving 204 is a contract violation.
-            if response.status_code == 204:
-                if method.upper() == "DELETE":
-                    return None
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=204,
-                )
-
-            if response.is_error:
-                if response.status_code in (401, 403, 404):
-                    # Revoked/re-scoped key or removed project — the cached
-                    # project_id is distrusted immediately, not at TTL.
-                    self.invalidate_project_id()
-                try:
-                    body = response.json()
-                except Exception:
-                    body = {"detail": response.text}
-                raise_on_error(response.status_code, body)
-
-            # DELETE is typed None — an empty 2xx body means "done".
-            if method.upper() == "DELETE" and not response.content:
-                return None
-            if not response.content:
-                raise OpenZyncError(
-                    message="empty response",
-                    status_code=response.status_code,
-                )
-
-            try:
-                return response.json()
-            except Exception as exc:
-                raise OpenZyncError(
-                    message=(
-                        f"Expected JSON from {url} "
-                        f"(status {response.status_code}), "
-                        f"got non-JSON body: {response.text[:200]!r}"
-                    ),
-                    status_code=response.status_code,
-                    detail={
-                        "url": url,
-                        "content_preview": response.text[:200],
-                    },
-                ) from exc
-
-        raise OpenZyncError(
-            message=f"Request failed after {_attempts_phrase(self._max_retries + 1)}",
-            status_code=500,
+        return await self._send_with_retry(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            log_tag="http.multipart",
+            send=send_multipart,
         )
 
     def _build_url(self, path: str) -> str:
