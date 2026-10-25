@@ -1,0 +1,1 @@
+Shorten the cached `resolve_project_id` TTL from one hour to 60 seconds to match the server RBAC cache TTL, bounding how long a re-scoped API key resolves to its old project. Auth failures (401/403/404) still invalidate immediately.

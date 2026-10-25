@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -60,6 +61,15 @@ Reads stay at ``DEFAULT_TIMEOUT`` while writes get the longer of
 ``WRITE_TIMEOUT`` and the caller-supplied ``timeout``. Multipart memory
 ingestion uploads blobs — a 30s write budget aborts large uploads
 before the server has finished receiving them.
+"""
+
+PROJECT_ID_TTL_SEC: float = 60.0
+"""Lifetime of the cached ``resolve_project_id`` value.
+
+The project scoping of an API key changes rarely (re-scoped keys), but a
+long-lived cache pins a stale project. Sixty seconds bounds the blast
+radius and matches the server RBAC cache TTL; auth failures invalidate
+immediately (see :meth:`AsyncHTTPTransport.invalidate_project_id`).
 """
 
 # httpx encodes ``data`` as ``application/x-www-form-urlencoded`` unless
@@ -197,6 +207,7 @@ class AsyncHTTPTransport:
         self._max_retries = max_retries
         self._timeout = timeout
         self._project_id: str | None = None
+        self._project_id_resolved_at: float | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = self._build_client()
 
@@ -354,6 +365,10 @@ class AsyncHTTPTransport:
                 )
 
             if response.is_error:
+                if response.status_code in (401, 403, 404):
+                    # Revoked/re-scoped key or removed project — the cached
+                    # project_id is distrusted immediately, not at TTL.
+                    self.invalidate_project_id()
                 try:
                     body = response.json()
                 except Exception:
@@ -491,6 +506,10 @@ class AsyncHTTPTransport:
                 )
 
             if response.is_error:
+                if response.status_code in (401, 403, 404):
+                    # Revoked/re-scoped key or removed project — the cached
+                    # project_id is distrusted immediately, not at TTL.
+                    self.invalidate_project_id()
                 try:
                     body = response.json()
                 except Exception:
@@ -556,9 +575,10 @@ class AsyncHTTPTransport:
     async def resolve_project_id(self) -> str:
         """Resolve the project_id from the API key via the backend.
 
-        Cached in memory for the lifetime of the client — the resolve
-        endpoint is called at most once.  Subsequent calls return the
-        cached value.
+        Cached in memory for ``PROJECT_ID_TTL_SEC`` (60s, matching the
+        server RBAC TTL) — the resolve endpoint is called at most once
+        per minute.  Use :meth:`invalidate_project_id` to force a
+        re-resolve (called automatically on 401/403/404).
 
         Returns:
             The project UUID string scoped to this API key.
@@ -569,7 +589,11 @@ class AsyncHTTPTransport:
                 before project scoping).
             AuthenticationError: If the key is revoked or invalid.
         """
-        if self._project_id is not None:
+        if (
+            self._project_id is not None
+            and self._project_id_resolved_at is not None
+            and time.monotonic() - self._project_id_resolved_at < PROJECT_ID_TTL_SEC
+        ):
             return self._project_id
 
         data = await self.request("GET", "/v1/api-key/project-id")
@@ -582,4 +606,14 @@ class AsyncHTTPTransport:
                 "Ensure your API key is scoped to a project."
             )
         self._project_id = pid
+        self._project_id_resolved_at = time.monotonic()
         return pid
+
+    def invalidate_project_id(self) -> None:
+        """Drop the cached project_id so the next call re-resolves it.
+
+        Called automatically on 401/403/404 (revoked key, re-scoped key,
+        removed project).  Call it explicitly after re-scoping a key.
+        """
+        self._project_id = None
+        self._project_id_resolved_at = None
