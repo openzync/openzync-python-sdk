@@ -10,8 +10,11 @@ from openzync import AsyncOpenZync
 
 
 @pytest.mark.unit
-async def test_retry_preserves_idempotency_key() -> None:
+async def test_retry_preserves_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A 503 then 200: both attempts carry the identical Idempotency-Key."""
+    monkeypatch.setenv("OPENZYNC_ALLOWED_HOSTS", "t,test")
     seen: list[str | None] = []
 
     async def _capture(request: httpx.Request) -> httpx.Response:

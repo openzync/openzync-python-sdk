@@ -20,8 +20,9 @@ from openzync.models.graph import GraphEdge, GraphNode, GraphNodeDetail
 
 
 @pytest.fixture
-def mock_client():
+def mock_client(monkeypatch: pytest.MonkeyPatch):
     """Create a real AsyncOpenZync with mocked sub-clients."""
+    monkeypatch.setenv("OPENZYNC_ALLOWED_HOSTS", "t,test")
     client = AsyncOpenZync(api_key="test", base_url="http://test")
     client.graph = AsyncMock()
     client.facts = AsyncMock()

@@ -12,7 +12,9 @@ Wraps ``httpx.AsyncClient`` with:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import os
 import random
 import time
 from collections.abc import Awaitable, Callable
@@ -72,6 +74,112 @@ long-lived cache pins a stale project. Sixty seconds bounds the blast
 radius and matches the server RBAC cache TTL; auth failures invalidate
 immediately (see :meth:`AsyncHTTPTransport.invalidate_project_id`).
 """
+
+ALLOWED_HOSTS_ENV = "OPENZYNC_ALLOWED_HOSTS"
+"""Comma-separated host allowlist for plain-HTTP base URLs. Unset = none."""
+
+
+def _is_loopback(host: str) -> bool:
+    """Return True when ``host`` refers to the local machine.
+
+    The host is parsed as an IP address, never matched as a string
+    prefix: ``127.attacker.test`` starts with ``127.`` but is a DNS name
+    owned by whoever registered it.
+
+    Args:
+        host: A hostname (already lowercased).
+
+    Returns:
+        True for ``localhost`` and IP literals in a loopback range.
+    """
+    candidate = host.strip().lower().removeprefix("[").removesuffix("]").rstrip(".")
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return candidate == "localhost"
+
+
+def _normalize_allowed_host(entry: str) -> str:
+    """Normalize one ``OPENZYNC_ALLOWED_HOSTS`` entry to a bare hostname.
+
+    Entries are bare hostnames (``example.com``) — any port (``example.com:8000``),
+    bracketed IPv6 (``[::1]``), case, and trailing dot are stripped so the entry
+    matches ``urllib.parse`` ``hostname`` (which itself excludes ports/brackets).
+    Entries with ports never matched before this normalization.
+    """
+    candidate = entry.strip().lower().rstrip(".")
+    if candidate.startswith("["):
+        end = candidate.find("]")
+        if end != -1:
+            return candidate[1:end]
+        return candidate.strip("[]")
+    if candidate.count(":") == 1:
+        host_part, _, port_part = candidate.partition(":")
+        if host_part and port_part.isdigit():
+            return host_part
+    return candidate
+
+
+def _allowed_hosts() -> set[str]:
+    """Read the host allowlist from ``OPENZYNC_ALLOWED_HOSTS``.
+
+    The env var is a comma-separated list of bare hostnames (ports, if
+    present, are stripped — see :func:`_normalize_allowed_host`).
+    Unset/empty means no hosts are allowlisted.
+    """
+    raw = os.environ.get(ALLOWED_HOSTS_ENV, "")
+    return {
+        normalized
+        for h in raw.split(",")
+        if h.strip()
+        for normalized in (_normalize_allowed_host(h),)
+        if normalized
+    }
+
+
+def _validate_base_url(base_url: str) -> str:
+    """Reject plain HTTP base URLs that would leak the API key.
+
+    The API key travels in an ``Authorization: Bearer`` header on every
+    request, so ``http://`` is accepted only for loopback hosts or hosts
+    explicitly allowlisted via ``OPENZYNC_ALLOWED_HOSTS`` (bare hostnames,
+    comma-separated — ``example.com``, not ``example.com:8000``).  Anything else
+    must use ``https://``.  An ``http(s)`` URL with an empty host is rejected
+    loudly instead of skipping validation fail-open.
+
+    Args:
+        base_url: The configured base URL.
+
+    Returns:
+        The base URL, unchanged.
+
+    Raises:
+        ValueError: If the URL uses plain HTTP against a non-loopback,
+            non-allowlisted host, or the URL has no host at all.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme in ("http", "https") and not host:
+        raise ValueError(
+            f"base URL {base_url!r} has no host — set a valid http(s) URL "
+            "with an explicit hostname."
+        )
+    if parsed.scheme == "http" and host and not _is_loopback(host):
+        if host not in _allowed_hosts():
+            raise ValueError(
+                f"base URL must use https for non-loopback host {host!r} — the "
+                f"API key is sent as a bearer token on every request. Use "
+                f"https://, point at a loopback address, or list the host in "
+                f"{ALLOWED_HOSTS_ENV} to accept plain HTTP explicitly."
+            )
+        logger.warning(
+            "Sending the OpenZync API key over plain HTTP to %s — the bearer "
+            "token and every response travel unencrypted.",
+            host,
+        )
+    return base_url
 
 # httpx encodes ``data`` as ``application/x-www-form-urlencoded`` unless
 # ``files`` is truthy — an empty list/dict silently downgrades a multipart
@@ -204,7 +312,7 @@ class AsyncHTTPTransport:
         max_retries: int = MAX_RETRIES,
     ) -> None:
         self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
+        self._base_url = _validate_base_url(base_url.rstrip("/"))
         self._max_retries = max_retries
         self._timeout = timeout
         self._project_id: str | None = None

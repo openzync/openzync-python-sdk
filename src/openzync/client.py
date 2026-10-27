@@ -189,6 +189,11 @@ class OpenZync:
         usable with ``for`` (sync drive) or ``async for``; the
         transport is owned by the iterator.
 
+        Bulk users: prefer ``AsyncOpenZync`` with ``async for`` — sync
+        ``for`` drives each item through a per-item ``asyncio.run()``
+        (see ``AsyncPaginatedIterator.__next__``), which is fine for a
+        few pages but wasteful at scale.
+
         Args:
             domain: Domain client attribute on ``AsyncOpenZync``.
             name: Method name on the domain client.

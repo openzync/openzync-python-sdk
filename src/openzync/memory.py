@@ -13,6 +13,7 @@ from openzync.models.memory import (
     IngestMemoryResponse,
     Message,
 )
+from pydantic import ValidationError as PydanticValidationError
 
 # Mirrors core's schemas/sorting.py SearchSort.
 ContextSort = Literal["relevance", "recent"]
@@ -179,7 +180,14 @@ class AsyncMemoryClient:
 
 
 def _as_message(m: Message | dict) -> dict:
-    """Convert a Message object or dict to a plain dict."""
+    """Convert a Message object or dict to a plain dict.
+
+    Dicts are validated through ``Message`` so a bad role fails locally
+    with ``ValidationError`` instead of a server 422 round-trip.
+    """
     if isinstance(m, Message):
         return m.model_dump(exclude_none=True)
-    return m
+    try:
+        return Message(**m).model_dump(exclude_none=True)
+    except PydanticValidationError as e:
+        raise ValidationError(str(e)) from e

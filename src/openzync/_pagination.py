@@ -75,6 +75,9 @@ class AsyncPaginatedIterator:
         coroutines. Page fetches happen lazily: only exhausted
         buffers trigger ``self._fetch``.
 
+        Bulk users: one ``asyncio.run()`` per item is wasteful at
+        scale — prefer ``AsyncOpenZync`` with ``async for`` instead.
+
         Raises:
             OpenZyncError: If called inside a running event loop —
                 use ``AsyncOpenZync`` / ``async for`` instead.
