@@ -91,7 +91,8 @@ class OpenZync:
     boundaries, so per-call transports are correctness, not overhead.
 
     ⚠️  Not safe to use inside an existing event loop (Jupyter, async apps).
-       For async environments, use ``AsyncOpenZync`` directly.
+      For async environments, use ``AsyncOpenZync`` directly.
+      For bulk workloads, use ``AsyncOpenZync`` — per-call transports make sync bulk iteration wasteful at scale.
 
     Args:
         api_key: The OpenZync API key.

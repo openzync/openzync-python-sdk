@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from typing import Literal
 
@@ -14,6 +15,8 @@ from openzync.models.memory import (
     Message,
 )
 from pydantic import ValidationError as PydanticValidationError
+
+logger = logging.getLogger(__name__)
 
 # Mirrors core's schemas/sorting.py SearchSort.
 ContextSort = Literal["relevance", "recent"]
@@ -87,7 +90,16 @@ class AsyncMemoryClient:
         # Generated once per call and reused for every transport-level
         # retry of this call (the transport resends the same headers) —
         # never regenerated on retry, so retries dedupe server-side.
-        key = idempotency_key or new_idempotency_key()
+        if idempotency_key is None:
+            logger.warning(
+                "openzync.ingest.auto_idempotency_key: generated a fresh key "
+                "for this call only — pass idempotency_key explicitly and "
+                "reuse it across caller-level retries or a retry after a "
+                "timeout will create a duplicate episode."
+            )
+            key = new_idempotency_key()
+        else:
+            key = idempotency_key
         headers = {"Idempotency-Key": key}
 
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None
