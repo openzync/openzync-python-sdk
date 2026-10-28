@@ -50,7 +50,6 @@ Changelog = "https://github.com/openzync/openzync-python-sdk/blob/main/CHANGELOG
 
 [tool.hatch.version]
 source = "vcs"
-fallback-version = "1.0.0"
 raw-options = { search_parent_directories = true, local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.sdist]
