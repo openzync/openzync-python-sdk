@@ -6,7 +6,6 @@ import httpx
 import pytest
 import respx
 
-from openzync import AsyncOpenZync
 
 
 @pytest.mark.unit

@@ -6,7 +6,7 @@ graph — searching, listing nodes, and retrieving node details.
 
 from __future__ import annotations
 
-from typing import Any, Type
+from typing import Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
