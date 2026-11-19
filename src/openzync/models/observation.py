@@ -12,7 +12,7 @@ class ObservationResponse(BaseModel):
     """A single observation surfaced from graph-topology analysis."""
 
     id: str = Field(..., description="UUID primary key.")
-    organization_id: str = Field(..., description="Owning organization.")
+    user_id: str = Field(..., description="Owner user UUID (self-ID).")
     project_id: str = Field(..., description="Owning project.")
     subject_entity_id: str = Field(
         ..., description="The entity this observation is about."

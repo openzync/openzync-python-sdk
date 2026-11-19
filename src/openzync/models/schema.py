@@ -12,7 +12,7 @@ class SchemaResponse(BaseModel):
     """Response from ``POST /v1/admin/schemas``."""
 
     id: str = Field(..., description="Schema UUID.")
-    organization_id: str = Field(..., description="Owning organization UUID.")
+    user_id: str = Field(..., description="Owner user UUID (self-ID).")
     name: str = Field(..., description="Schema display name.")
     type: str = Field(..., description="Schema type: 'structured' or 'classification'.")
     json_schema: dict[str, Any] = Field(..., description="JSON Schema definition.")
