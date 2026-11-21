@@ -117,7 +117,7 @@ class AsyncSchemasClient:
         sort_by: AdminSchemaSortBy | None = None,
         sort_dir: SortDir = "desc",
     ) -> list[SchemaResponse]:
-        """List schemas for the organization.
+        """List schemas you can access.
 
         Core returns an ``{"data", "total"}`` envelope — only ``data`` is
         surfaced here.

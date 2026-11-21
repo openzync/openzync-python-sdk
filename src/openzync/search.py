@@ -1,4 +1,4 @@
-"""Search domain client — organization-wide resource search."""
+"""Search domain client — user-scoped resource search."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class AsyncSearchClient:
         limit: int = 10,
         sort: SearchSort = "relevance",
     ) -> GlobalSearchResponse:
-        """Search across projects, users, and sessions in your organization.
+        """Search across projects, users, and sessions you can access.
 
         Results are scoped to resources the authenticated principal can
         access.

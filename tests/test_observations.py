@@ -20,7 +20,7 @@ class TestObservationsClient:
                 "data": [
                     {
                         "id": "o1",
-                        "organization_id": "org-1",
+                        "user_id": "user-1",
                         "project_id": "p1",
                         "subject_entity_id": "e1",
                         "related_entity_id": "e2",
@@ -44,7 +44,7 @@ class TestObservationsClient:
         assert isinstance(result, ObservationListResponse)
         assert isinstance(result.data[0], ObservationResponse)
         assert result.total == 1
-        assert result.data[0].organization_id == "org-1"
+        assert result.data[0].user_id == "user-1"
         assert result.data[0].project_id == "p1"
         assert result.data[0].updated_at == datetime(2026, 1, 1, tzinfo=UTC)
 

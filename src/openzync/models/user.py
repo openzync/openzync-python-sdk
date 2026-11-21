@@ -50,7 +50,6 @@ class UserResponse(BaseModel):
         default="member",
         description="Dashboard role — 'admin' or 'member'.",
     )
-    user_id: str = Field(..., description="Owner user UUID (self-ID).")
     created_at: datetime = Field(..., description="ISO-8601 creation timestamp.")
     updated_at: datetime = Field(..., description="ISO-8601 update timestamp.")
     is_deleted: bool = Field(default=False)
