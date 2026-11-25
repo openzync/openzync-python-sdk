@@ -44,6 +44,14 @@ class IngestMemoryResponse(BaseModel):
     blob_count: int = Field(default=0, description="Number of blob files uploaded.")
     status: str = Field(default="accepted", description="Always 'accepted'.")
     message: str = Field(default="Messages accepted for processing.")
+    degraded: bool = Field(
+        default=False,
+        description="True when a post-commit fan-out step failed server-side. "
+        "Ingest is committed; safe to ignore unless monitoring.",
+    )
+    degrade_reason: str | None = Field(
+        default=None, description="Machine-readable reason when degraded."
+    )
 
 
 class ContextResponse(BaseModel):

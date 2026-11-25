@@ -152,14 +152,26 @@ class TestMemoryClient:
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, async_client, mock_http, mock_resolve):
-        """DELETE /memory is confirm-gated; 204 returns None."""
+        """DELETE /memory is confirm-gated; full wipe 204 returns True."""
         route = mock_http.delete("/v1/projects/p1/memory").respond(status_code=204)
 
         result = await async_client.memory.delete(confirm="p1")
-        # No exception means success
-        assert result is None
+        # Full wipe success
+        assert result is True
         # confirm must reach the server — the gate is the whole point
         assert json.loads(route.calls.last.request.content) == {"confirm": "p1"}
+
+    @pytest.mark.asyncio
+    async def test_delete_memory_partial_wipe_returns_false(
+        self, async_client, mock_http, mock_resolve
+    ):
+        """DELETE /memory 204 with X-Wipe-Failed:true returns False."""
+        mock_http.delete("/v1/projects/p1/memory").respond(
+            status_code=204, headers={"X-Wipe-Failed": "true"}
+        )
+
+        result = await async_client.memory.delete(confirm="p1")
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_ingest_memory_validation_error(

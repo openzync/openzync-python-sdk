@@ -318,6 +318,7 @@ class AsyncHTTPTransport:
         self._project_id: str | None = None
         self._project_id_resolved_at: float | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_response_headers: dict[str, str] = {}
         self._client = self._build_client()
 
     def _build_client(self) -> httpx.AsyncClient:
@@ -373,6 +374,15 @@ class AsyncHTTPTransport:
         await self._client.aclose()
         self._loop = None
 
+    @property
+    def last_response_headers(self) -> dict[str, str]:
+        """Lowercased headers of the most recent HTTP response.
+
+        Returns a copy — do not share one client across concurrent
+        deletes and expect the snapshot to stay stable.
+        """
+        return dict(self._last_response_headers)
+
     async def _send_with_retry(
         self,
         *,
@@ -413,6 +423,12 @@ class AsyncHTTPTransport:
         for attempt in range(self._max_retries + 1):
             try:
                 response = await send()
+                # Lowercased snapshot for callers that need a response
+                # header (e.g. X-Wipe-Failed on DELETE) — request() itself
+                # stays body-only so existing `-> None` callers don't break.
+                self._last_response_headers = {
+                    k.lower(): v for k, v in response.headers.items()
+                }
             except httpx.TransportError as exc:
                 logger.warning(
                     f"{log_tag}.transport_error",

@@ -7,7 +7,7 @@ import logging
 import uuid
 from typing import Literal
 
-from openzync._errors import ValidationError
+from openzync._errors import OpenZyncError, ValidationError
 from openzync._http import AsyncHTTPTransport
 from openzync.models.memory import (
     ContextResponse,
@@ -109,14 +109,27 @@ class AsyncMemoryClient:
         # Always multipart — the backend accepts only multipart/form-data,
         # even for text-only calls. With no blobs the transport sends a
         # `data`-only multipart form.
-        data = await self._http.request_multipart(
-            "POST",
-            f"/v1/projects/{pid}/memory",
-            data={"data": json.dumps(body)},
-            files=files,
-            headers=headers,
-            params=None,
-        )
+        try:
+            data = await self._http.request_multipart(
+                "POST",
+                f"/v1/projects/{pid}/memory",
+                data={"data": json.dumps(body)},
+                files=files,
+                headers=headers,
+                params=None,
+            )
+        except OpenZyncError as exc:
+            # 409 carries the winning claim's job_id in the error body
+            # (transport keeps extras on exc.detail) — surface it in the
+            # message so callers don't have to dig.
+            job_id = (exc.detail or {}).get("job_id")
+            if exc.status_code == 409 and job_id:
+                raise type(exc)(
+                    message=f"{exc.message} (job_id={job_id})",
+                    detail=exc.detail,
+                    status_code=exc.status_code,
+                ) from exc
+            raise
         return IngestMemoryResponse(**data)
 
     async def get_context(
@@ -168,7 +181,7 @@ class AsyncMemoryClient:
         )
         return ContextResponse(**data)
 
-    async def delete(self, *, confirm: str) -> None:
+    async def delete(self, *, confirm: str) -> bool:
         """Delete all memory for a project (soft-delete, confirm-gated).
 
         This is the GDPR memory-wipe operation and is **not** reversible —
@@ -180,6 +193,11 @@ class AsyncMemoryClient:
                 other value with 422. Pass the project ID explicitly to
                 prove intent; there is no default.
 
+        Returns:
+            ``True`` when the wipe completed fully, ``False`` when the
+            server signaled a partial S3 sweep via ``X-Wipe-Failed: true``
+            (a warning is logged; the DB delete itself succeeded).
+
         Raises:
             ValidationError: If ``confirm`` does not match the project ID.
         """
@@ -189,6 +207,14 @@ class AsyncMemoryClient:
             f"/v1/projects/{pid}/memory",
             json_body={"confirm": confirm},
         )
+        if self._http.last_response_headers.get("x-wipe-failed") == "true":
+            logger.warning(
+                "openzync.memory.delete.partial_wipe: project %s soft-deleted "
+                "but the S3 blob sweep partially failed — blobs retry server-side",
+                pid,
+            )
+            return False
+        return True
 
 
 def _as_message(m: Message | dict) -> dict:
