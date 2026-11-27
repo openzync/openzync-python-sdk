@@ -61,10 +61,10 @@ client.memory.get_context(query="...")                  # context assembled for 
 client.facts.add(facts=[...], session_id="s1")          # subject → predicate → object
 client.facts.retract(fact_id, reason="corrected")       # withdraw, keep the history
 client.graph.search("query", types="episodes,facts")    # hybrid search
-client.users.create(external_id="alice")                # users; list_iter() auto-paginates
+client.projects.list_iter()                           # auto-paginates
 ```
 
-`memory`, `facts`, `graph`, `sessions`, `users`, `projects`, `search` and four more domains cover
+`memory`, `facts`, `graph`, `sessions`, `projects`, `search` and four more domains cover
 the API — every method is in the [SDK reference](https://docs.openzync.tech/en/latest/domains/sdk_python.html).
 
 ## Errors
@@ -73,9 +73,9 @@ the API — every method is in the [SDK reference](https://docs.openzync.tech/en
 from openzync._errors import NotFoundError, RateLimitError
 
 try:
-    user = client.users.get("non-existent-id")
+    session = client.sessions.get("non-existent-id")
 except NotFoundError:
-    print("User not found")
+    print("Session not found")
 except RateLimitError:
     print("Rate limited — slow down")
 ```
@@ -85,7 +85,7 @@ timeouts are separate classes, so you retry only what is safe.
 
 ## Pagination
 
-`for user in client.users.list_iter():` fetches pages as it iterates (`async for` on the async client).
+`for project in client.projects.list_iter():` fetches pages as it iterates (`async for` on the async client).
 
 ## LangChain
 

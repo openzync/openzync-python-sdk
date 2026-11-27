@@ -1,1 +1,1 @@
-**BREAKING:** `AsyncMemoryClient.delete()` returns `bool` (`True` = fully wiped, `False` = degraded partial wipe with S3 leftovers for GC retry) instead of `None` — update `is None` checks to truthiness checks.
+**BREAKING:** `AsyncMemoryClient.delete()` now returns `bool` (`True` = fully wiped, `False` = degraded partial wipe with S3 leftovers for GC retry) instead of `None` — updated `is None` checks to truthiness checks.

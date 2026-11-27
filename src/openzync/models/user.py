@@ -71,8 +71,7 @@ class UserResponse(BaseModel):
 class UserListResponse(BaseModel):
     """Paginated response for ``GET /v1/users``.
 
-    BREAKING: ``AsyncUsersClient.list`` returns this model — callers
-    doing ``result["data"]`` must move to ``result.data``.
+    Callers doing ``result["data"]`` must use ``result.data``.
     """
 
     data: list[UserResponse] = Field(..., description="Users for the current page.")

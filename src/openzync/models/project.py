@@ -54,9 +54,12 @@ class ProjectResponse(BaseModel):
 
 
 class AddMemberRequest(BaseModel):
-    """Request body for ``POST /v1/projects/{project_id}/members``."""
+    """Request body for ``POST /v1/projects/{project_id}/members``.
 
-    user_id: str = Field(..., description="UUID of the user to add.")
+    # ⚠️ BREAKING: ``user_id`` removed — members are added by email.
+    """
+
+    email: str = Field(..., description="Email address of the user to add.")
     role: str = Field(
         default="member", pattern=r"^(owner|member)$", description="Project role."
     )
@@ -68,9 +71,26 @@ class ProjectMemberResponse(BaseModel):
     id: str = Field(..., description="Internal UUID.")
     user_id: str = Field(..., description="User UUID.")
     role: str = Field(..., description="Project role: owner or member.")
+    status: str = Field(
+        default="active",
+        description="Membership status: pending (awaiting invitee approval) or active.",
+    )
     created_at: datetime = Field(
         ..., description="Membership creation timestamp (UTC)."
     )
     user: UserResponse | None = Field(
         default=None, description="Nested user, null when the user row is missing."
     )
+
+
+class ProjectApprovalResponse(BaseModel):
+    """Pending invite from ``GET /v1/me/project-approvals``."""
+
+    id: str = Field(..., description="Membership record UUID.")
+    project_id: str = Field(..., description="UUID of the inviting project.")
+    project_name: str = Field(..., description="Human-readable project name.")
+    role: str = Field(..., description="Project role the invite grants.")
+    status: str = Field(
+        default="pending", description="Always 'pending' on this endpoint."
+    )
+    created_at: datetime = Field(..., description="Invite creation timestamp (UTC).")

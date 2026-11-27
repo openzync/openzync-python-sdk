@@ -22,9 +22,6 @@ class AsyncUsersClient:
     def __init__(self, http: AsyncHTTPTransport) -> None:
         self._http = http
 
-    # ⚠️ BREAKING: the `permissions` parameter was removed — core validates but
-    # silently drops it on POST /v1/users (seeds role defaults), so passing it
-    # granted nothing. Use update() to set permissions after creation.
     async def create(
         self,
         external_id: str,
@@ -34,13 +31,8 @@ class AsyncUsersClient:
     ) -> UserResponse:
         """Create a new user.
 
-        .. warning::
-            Requires an **org-admin credential** (JWT dashboard session).
-            Project-scoped API keys are rejected with ``403 Forbidden``.
-
-        .. note::
-            Permissions are seeded server-side from the role defaults and
-            cannot be set at creation — use :meth:`update` to change them.
+        Permissions are seeded server-side from the role defaults and
+        cannot be set at creation — use ``update()`` afterwards.
 
         Args:
             external_id: Caller-defined user identifier.
@@ -50,9 +42,6 @@ class AsyncUsersClient:
 
         Returns:
             ``UserResponse`` with the created user.
-
-        Raises:
-            OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
         body = UserCreateRequest(
             external_id=external_id,
@@ -67,16 +56,19 @@ class AsyncUsersClient:
         )
         return UserResponse(**data)
 
-    async def get(self, user_id: str) -> UserResponse:
+    async def get(
+        self,
+        user_id: str,
+    ) -> UserResponse:
         """Get user details by internal UUID.
 
         Args:
             user_id: The internal UUID of the user.
-
-        Returns:
-            ``UserResponse`` with user details including counts.
         """
-        data = await self._http.request("GET", f"/v1/users/{user_id}")
+        data = await self._http.request(
+            "GET",
+            f"/v1/users/{user_id}",
+        )
         return UserResponse(**data)
 
     async def update(
@@ -89,26 +81,18 @@ class AsyncUsersClient:
     ) -> UserResponse:
         """Update user fields.
 
-        .. warning::
-            Requires an **org-admin credential** (JWT dashboard session).
-            Project-scoped API keys are rejected with ``403 Forbidden``.
-
         Args:
             user_id: The internal UUID of the user.
-            name: Optional new display name.
-            email: Optional new email.
-            metadata: Optional new metadata dict.
-            permissions: Optional explicit permission grants. Omit to leave
-                unchanged.
-
-        Returns:
-            ``UserResponse`` with updated fields.
-
-        Raises:
-            OpenZyncError: HTTP 403 if the credential is not an org admin.
+            name: New display name.
+            email: New email address.
+            metadata: New metadata dict.
+            permissions: Explicit permission grants. Omit to leave unchanged.
         """
         body = UserUpdateRequest(
-            name=name, email=email, metadata=metadata, permissions=permissions
+            name=name,
+            email=email,
+            metadata=metadata,
+            permissions=permissions,
         )
         data = await self._http.request(
             "PATCH",
@@ -117,20 +101,19 @@ class AsyncUsersClient:
         )
         return UserResponse(**data)
 
-    async def delete(self, user_id: str) -> None:
-        """Soft-delete a user.
-
-        .. warning::
-            Requires an **org-admin credential** (JWT dashboard session).
-            Project-scoped API keys are rejected with ``403 Forbidden``.
+    async def delete(
+        self,
+        user_id: str,
+    ) -> None:
+        """Delete a user.
 
         Args:
             user_id: The internal UUID of the user.
-
-        Raises:
-            OpenZyncError: HTTP 403 if the credential is not an org admin.
         """
-        await self._http.request("DELETE", f"/v1/users/{user_id}")
+        await self._http.request(
+            "DELETE",
+            f"/v1/users/{user_id}",
+        )
 
     async def list(
         self,
@@ -139,9 +122,6 @@ class AsyncUsersClient:
         cursor: str | None = None,
     ) -> UserListResponse:
         """List users with cursor-based pagination.
-
-        BREAKING: returns ``UserListResponse`` — use ``result.data``,
-        not ``result["data"]``.
 
         Args:
             limit: Maximum results per page.
@@ -153,19 +133,30 @@ class AsyncUsersClient:
         params: dict[str, str | int] = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        data = await self._http.request("GET", "/v1/users", params=params)
+        data = await self._http.request(
+            "GET",
+            "/v1/users",
+            params=params,
+        )
         return UserListResponse(**data)
 
-    def list_iter(self, *, limit: int = 50) -> AsyncPaginatedIterator:
+    def list_iter(
+        self,
+        *,
+        limit: int = 50,
+    ) -> AsyncPaginatedIterator:
         """Iterate over all users with auto-pagination.
+
+        Fetches pages of ``limit`` users by advancing ``cursor`` and
+        stops when ``has_more`` is false or the cursor is null.
 
         Usage::
 
             async for user in client.users.list_iter():
-                print(user["name"])
+                print(user.external_id)
         """
 
-        async def fetch_page(cursor: str | None = None) -> dict:
+        async def fetch_page(cursor: str | None = None) -> UserListResponse:
             return await self.list(limit=limit, cursor=cursor)
 
         return AsyncPaginatedIterator(fetch_page, limit)

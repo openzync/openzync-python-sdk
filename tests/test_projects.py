@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -236,8 +237,8 @@ class TestProjectsClient:
 
     @pytest.mark.asyncio
     async def test_add_member(self, async_client, mock_http, mock_resolve):
-        """POST /projects/{id}/members adds a member."""
-        mock_http.post("/v1/projects/p1/members").respond(
+        """POST /projects/{id}/members adds a member by email."""
+        route = mock_http.post("/v1/projects/p1/members").respond(
             json={
                 "id": "m1",
                 "user_id": "u2",
@@ -247,12 +248,14 @@ class TestProjectsClient:
         )
 
         member = await async_client.projects.add_member(
-            user_id="u2",
+            email="bob@example.com",
             role="member",
         )
         assert isinstance(member, ProjectMemberResponse)
         assert member.user_id == "u2"
         assert member.role == "member"
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"email": "bob@example.com", "role": "member"}
 
     @pytest.mark.asyncio
     async def test_remove_member(self, async_client, mock_http, mock_resolve):

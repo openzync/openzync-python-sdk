@@ -9,6 +9,7 @@ from openzync._pagination import AsyncPaginatedIterator
 from openzync.models.project import (
     AddMemberRequest,
     CreateProjectRequest,
+    ProjectApprovalResponse,
     ProjectMemberResponse,
     ProjectResponse,
     UpdateProjectRequest,
@@ -223,26 +224,83 @@ class AsyncProjectsClient:
 
     async def add_member(
         self,
-        user_id: str,
+        email: str,
         role: str = "member",
     ) -> ProjectMemberResponse:
-        """Add a member to a project.
+        """Invite a member to a project by email (always ``pending``).
+
+        # ⚠️ BREAKING: ``user_id`` replaced by ``email``.
+        # ⚠️ BREAKING: invites return ``status="pending"`` — the invitee
+        must approve via :meth:`approve_member` before gaining access.
 
         Args:
-            user_id: The UUID of the user to add.
+            email: Email address of the user to add.
             role: Project role (``"owner"`` or ``"member"``).
 
         Returns:
-            ``ProjectMemberResponse`` with membership details.
+            ``ProjectMemberResponse`` with ``status="pending"``.
         """
         pid = await self._http.resolve_project_id()
-        body = AddMemberRequest(user_id=user_id, role=role)
+        body = AddMemberRequest(email=email, role=role)
         data = await self._http.request(
             "POST",
             f"/v1/projects/{pid}/members",
             json_body=body.model_dump(exclude_none=True),
         )
         return ProjectMemberResponse(**data)
+
+    async def list_approvals(self) -> list[ProjectApprovalResponse]:
+        """List the caller's pending project invites.
+
+        Returns:
+            Pending memberships with project names, oldest first.
+        """
+        data = await self._http.request(
+            "GET",
+            "/v1/me/project-approvals",
+        )
+        return [ProjectApprovalResponse(**item) for item in data]
+
+    async def approve_member(
+        self,
+        user_id: str | None = None,
+    ) -> ProjectMemberResponse:
+        """Approve a pending invite, activating the membership.
+
+        Only the invitee (omit ``user_id`` for self-approval) or a
+        platform superadmin may approve.
+
+        Args:
+            user_id: Invitee UUID; omitted means the caller approves
+                their own invite.
+
+        Returns:
+            ``ProjectMemberResponse`` with ``status="active"``.
+        """
+        pid = await self._http.resolve_project_id()
+        data = await self._http.request(
+            "POST",
+            f"/v1/projects/{pid}/members/approve",
+            json_body={"user_id": user_id} if user_id is not None else {},
+        )
+        return ProjectMemberResponse(**data)
+
+    async def reject_member(self, user_id: str | None = None) -> None:
+        """Reject a pending invite, deleting the membership row.
+
+        Only the invitee (omit ``user_id`` for self-rejection) or a
+        platform superadmin may reject.
+
+        Args:
+            user_id: Invitee UUID; omitted means the caller rejects
+                their own invite.
+        """
+        pid = await self._http.resolve_project_id()
+        await self._http.request(
+            "POST",
+            f"/v1/projects/{pid}/members/reject",
+            json_body={"user_id": user_id} if user_id is not None else {},
+        )
 
     async def remove_member(self, user_id: str) -> None:
         """Remove a member from a project.

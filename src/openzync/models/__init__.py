@@ -35,6 +35,7 @@ from openzync.models.observation import (
 from openzync.models.project import (
     AddMemberRequest,
     CreateProjectRequest,
+    ProjectApprovalResponse,
     ProjectMemberResponse,
     ProjectResponse,
     UpdateProjectRequest,
@@ -82,6 +83,7 @@ __all__ = [
     "ObservationListResponse",
     "ObservationResponse",
     "PaginatedFactsResponse",
+    "ProjectApprovalResponse",
     "ProjectMemberResponse",
     "ProjectResponse",
     "SchemaPreviewResponse",

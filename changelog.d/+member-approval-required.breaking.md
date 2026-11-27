@@ -1,0 +1,1 @@
+BREAKING: `add_member` now returns `status="pending"` (invitee must self-approve); new `list_approvals()` (`GET /v1/me/project-approvals`), `approve_member(user_id?)`, `reject_member(user_id?)`, and `status` on `ProjectMemberResponse` plus new `ProjectApprovalResponse`.

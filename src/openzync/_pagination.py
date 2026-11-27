@@ -17,9 +17,9 @@ class AsyncPaginatedIterator:
 
     Two drive modes share one instance:
 
-    - ``async for item in client.users.list_iter():`` — inside an
+    - ``async for item in client.projects.list_iter():`` — inside an
       already-running event loop (``AsyncOpenZync``).
-    - ``for item in client.users.list_iter():`` — sync drive, each
+    - ``for item in client.projects.list_iter():`` — sync drive, each
       ``__next__`` runs one ``__anext__`` step in a fresh event loop
       via ``asyncio.run()`` (the sync ``OpenZync`` client).
 

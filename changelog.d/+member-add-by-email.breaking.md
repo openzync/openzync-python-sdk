@@ -1,0 +1,1 @@
+**BREAKING:** `AsyncProjectsClient.add_member(user_id, role)` -> `add_member(email, role)`; `AddMemberRequest` is now `{email, role}` and the wire body sends `email` with no `user_id`. Restored `AsyncUsersClient` (users domain) shipped alongside.
